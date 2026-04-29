@@ -20,22 +20,19 @@ public class Product {
     @Column(nullable = false)
     private String name;
 
-    private String description;
-
     @Column(nullable = false)
     private Double price;
 
-    private Integer stockQuantity;
-
-    private String category;
+    // private String description;
+    // private Integer stockQuantity;
+    // private String category;
 
     @ManyToOne
     @JoinColumn(name = "order_id")
     private Order order;
 
-    public Product(String name, Double price, Integer stockQuantity) {
+    public Product(String name, Double price) {
         this.name = name;
         this.price = price;
-        this.stockQuantity = stockQuantity;
     }
 }
