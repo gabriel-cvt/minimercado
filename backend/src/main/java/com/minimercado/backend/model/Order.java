@@ -28,7 +28,7 @@ public class Order {
     private OrderStatus status = OrderStatus.PENDING;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
-    private List<Product> items;
+    private List<OrderItem> items;
 
     @ManyToOne
     @JoinColumn(name = "client_id")
@@ -43,7 +43,7 @@ public class Order {
     public void calculateTotal() {
         this.totalValue = this.items
                 .stream()
-                .mapToDouble(Product::getPrice)
+                .mapToDouble(OrderItem::getSubtotal)
                 .sum();
     }
 }
