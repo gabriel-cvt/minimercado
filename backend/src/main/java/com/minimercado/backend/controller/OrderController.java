@@ -23,7 +23,7 @@ public class OrderController {
 
     private final OrderService orderService;
 
-    @GetMapping(API_ORDER_GET)
+    @GetMapping(API_ORDER_ID)
     public ResponseEntity<OrderResponseDTO> getById(@PathVariable UUID id) {
         return ResponseEntity.ok(orderService.get(id));
     }
@@ -41,7 +41,7 @@ public class OrderController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @PutMapping(API_ORDER_PUT)
+    @PutMapping(API_ORDER_ID)
     public ResponseEntity<OrderResponseDTO> update(
             @PathVariable UUID id,
             @RequestBody @Valid OrderPutDTO data) {
