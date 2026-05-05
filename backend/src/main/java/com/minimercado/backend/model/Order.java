@@ -35,10 +35,6 @@ public class Order {
 
     private Double totalValue;
 
-    public Order(List<Product> products, Client client) {
-        this.client = client;
-    }
-
     public void calculateTotal() {
         this.totalValue = this.items
                 .stream()
