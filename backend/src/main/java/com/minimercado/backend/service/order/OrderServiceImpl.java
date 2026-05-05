@@ -5,6 +5,7 @@ import com.minimercado.backend.dto.event.*;
 import com.minimercado.backend.dto.order.OrderPostDTO;
 import com.minimercado.backend.dto.order.OrderPutDTO;
 import com.minimercado.backend.dto.order.OrderResponseDTO;
+import com.minimercado.backend.dto.orderItem.OrderItemRequestDTO;
 import com.minimercado.backend.enums.OrderKitchenEventType;
 import com.minimercado.backend.enums.OrderStatus;
 import com.minimercado.backend.mapper.OrderMapper;
@@ -38,10 +39,7 @@ public class OrderServiceImpl implements OrderService{
 
     @Override
     public OrderResponseDTO get(Long id){
-        Order order = orderRepository
-                .findById(id)
-                .orElseThrow(EntityNotFoundException::new);
-        return mapper.toResponse(order);
+        return mapper.toResponse(findOrderById(id));
     }
 
     @Override
@@ -54,20 +52,9 @@ public class OrderServiceImpl implements OrderService{
     @Override
     @Transactional
     public OrderResponseDTO create(OrderPostDTO data) {
-        Client client = clientRepository.findById((data.clientId()))
-                .orElseThrow(EntityNotFoundException::new);
-
         Order order = new Order();
-        order.setClient(client);
-        List<OrderItem> orderItems = data.items().stream().map(
-                itemDto -> {
-                    Product product = productRepository.findById(itemDto.productId())
-                            .orElseThrow(EntityNotFoundException::new);
-
-                    return new OrderItem(product, order, itemDto.quantity());
-                }).toList();
-
-        order.setItems(orderItems);
+        order.setClient(findClientById(data.clientId()));
+        order.setItems(buildOrderItems(data.items(), order));
         order.calculateTotal();
         
         Order savedOrder = orderRepository.save(order);
@@ -79,40 +66,28 @@ public class OrderServiceImpl implements OrderService{
     @Override
     @Transactional
     public OrderResponseDTO edit(Long id, OrderPutDTO data) {
-        Order order = orderRepository.findById(id)
-                .orElseThrow(EntityNotFoundException::new);
+        Order order = findOrderById(id);
 
-        if (order.getStatus() == OrderStatus.CANCELLED ||
-            order.getStatus() == OrderStatus.FINISHED) {
-            throw new IllegalStateException();
-        }
+        validateOrderCanBeChanged(order);
 
         if (!order.getClient().getId().equals(data.clientId())) {
-            Client newClient = clientRepository.findById(data.clientId()).orElseThrow();
-            order.setClient(newClient);
+            order.setClient(findClientById(data.clientId()));
         }
 
         order.getItems().clear();
-
-        List<OrderItem> updatedItems = data.items().stream().map(itemDto -> {
-            Product product = productRepository.findById(itemDto.productId()).orElseThrow();
-            return new OrderItem(product, order, itemDto.quantity());
-        }).toList();
-
-        order.getItems().addAll(updatedItems);
+        order.getItems().addAll(buildOrderItems(data.items(), order));
         order.calculateTotal();
+
         Order savedOrder = orderRepository.save(order);
 
         sendOrderToKitchen(savedOrder, OrderKitchenEventType.UPDATED);
-
         return mapper.toResponse(savedOrder);
     }
 
     @Override
     @Transactional
     public void cancel(Long id) {
-        Order order = orderRepository.findById(id)
-                .orElseThrow(EntityNotFoundException::new);
+        Order order = findOrderById(id);
 
         if (order.getStatus() == OrderStatus.CANCELLED) {
             return;
@@ -127,6 +102,38 @@ public class OrderServiceImpl implements OrderService{
 
         eventPublisher.publishEvent(new OrderCancelledEvent(order.getId()));
     }
+
+    private Order findOrderById(Long id) {
+        return orderRepository.findById(id)
+                .orElseThrow(EntityNotFoundException::new);
+    }
+
+    private Client findClientById(Long id) {
+        return clientRepository.findById(id)
+                .orElseThrow(EntityNotFoundException::new);
+    }
+
+    private Product findProductById(Long id) {
+        return productRepository.findById(id)
+                .orElseThrow(EntityNotFoundException::new);
+    }
+
+    private List<OrderItem> buildOrderItems(List<OrderItemRequestDTO> items, Order order) {
+        return items.stream()
+                .map(itemDto -> {
+                    Product product = findProductById(itemDto.productId());
+                    return new OrderItem(product, order, itemDto.quantity());
+                })
+                .toList();
+    }
+
+    private void validateOrderCanBeChanged(Order order) {
+        if (order.getStatus() == OrderStatus.CANCELLED ||
+                order.getStatus() == OrderStatus.FINISHED) {
+            throw new IllegalStateException();
+        }
+    }
+
 
     private void sendOrderToKitchen(Order order, OrderKitchenEventType eventType){
         eventPublisher.publishEvent(
