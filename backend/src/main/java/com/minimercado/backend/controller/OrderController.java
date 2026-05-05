@@ -52,4 +52,11 @@ public class OrderController {
         orderService.cancel(id);
         return ResponseEntity.noContent().build();
     }
+
+    @PatchMapping("/{id}/ready")
+    public ResponseEntity<OrderResponseDTO> markAsReady(@PathVariable Long id) {
+        orderService.markAsReady(id);
+        return ResponseEntity.noContent().build();
+    }
+
 }

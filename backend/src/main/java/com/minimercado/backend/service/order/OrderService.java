@@ -17,4 +17,6 @@ public interface OrderService {
     OrderResponseDTO edit(Long id, OrderPutDTO data);
 
     void cancel(Long id);
+
+    void markAsReady(Long id);
 }
