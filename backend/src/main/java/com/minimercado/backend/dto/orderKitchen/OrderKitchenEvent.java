@@ -1,4 +1,4 @@
-package com.minimercado.backend.dto.event;
+package com.minimercado.backend.dto.orderKitchen;
 
 import com.minimercado.backend.enums.OrderKitchenEventType;
 

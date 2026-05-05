@@ -1,4 +1,4 @@
-package com.minimercado.backend.dto.event;
+package com.minimercado.backend.dto.orderKitchen;
 
 public record OrderKitchenItemDTO(
         Long productId,
