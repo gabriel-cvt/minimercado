@@ -1,7 +1,7 @@
 package com.minimercado.backend.service.order;
 
 
-import com.minimercado.backend.dto.event.*;
+import com.minimercado.backend.dto.orderKitchen.*;
 import com.minimercado.backend.dto.order.OrderPostDTO;
 import com.minimercado.backend.dto.order.OrderPutDTO;
 import com.minimercado.backend.dto.order.OrderResponseDTO;
@@ -59,7 +59,7 @@ public class OrderServiceImpl implements OrderService{
         
         Order savedOrder = orderRepository.save(order);
 
-        sendOrderToKitchen(savedOrder, OrderKitchenEventType.CREATED);
+        publishKitchenEvent(savedOrder, OrderKitchenEventType.CREATED);
         return mapper.toResponse(savedOrder);
     }
 
@@ -68,7 +68,10 @@ public class OrderServiceImpl implements OrderService{
     public OrderResponseDTO edit(Long id, OrderPutDTO data) {
         Order order = findOrderById(id);
 
-        validateOrderCanBeChanged(order);
+        if (order.getStatus() == OrderStatus.CANCELLED ||
+                order.getStatus() == OrderStatus.FINISHED) {
+            throw new IllegalStateException();
+        }
 
         if (!order.getClient().getId().equals(data.clientId())) {
             order.setClient(findClientById(data.clientId()));
@@ -80,7 +83,7 @@ public class OrderServiceImpl implements OrderService{
 
         Order savedOrder = orderRepository.save(order);
 
-        sendOrderToKitchen(savedOrder, OrderKitchenEventType.UPDATED);
+        publishKitchenEvent(savedOrder, OrderKitchenEventType.UPDATED);
         return mapper.toResponse(savedOrder);
     }
 
@@ -100,7 +103,7 @@ public class OrderServiceImpl implements OrderService{
         order.setStatus(OrderStatus.CANCELLED);
         orderRepository.save(order);
 
-        eventPublisher.publishEvent(new OrderCancelledEvent(order.getId()));
+        publishKitchenEvent(order, OrderKitchenEventType.CANCELLED);
     }
 
     private Order findOrderById(Long id) {
@@ -127,15 +130,7 @@ public class OrderServiceImpl implements OrderService{
                 .toList();
     }
 
-    private void validateOrderCanBeChanged(Order order) {
-        if (order.getStatus() == OrderStatus.CANCELLED ||
-                order.getStatus() == OrderStatus.FINISHED) {
-            throw new IllegalStateException();
-        }
-    }
-
-
-    private void sendOrderToKitchen(Order order, OrderKitchenEventType eventType){
+    private void publishKitchenEvent(Order order, OrderKitchenEventType eventType){
         eventPublisher.publishEvent(
                 new OrderKitchenEvent(
                         order.getId(),

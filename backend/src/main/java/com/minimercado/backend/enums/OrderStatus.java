@@ -2,7 +2,7 @@ package com.minimercado.backend.enums;
 
 public enum OrderStatus {
     PENDING,
-    PAID,
-    CANCELLED,
+    READY_FOR_PICKUP,
     FINISHED,
+    CANCELLED
 }
