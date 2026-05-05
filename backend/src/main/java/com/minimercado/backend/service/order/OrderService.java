@@ -20,5 +20,7 @@ public interface OrderService {
 
     void markAsReady(Long id);
 
+    void markAsPaid(Long id);
+
     void finish(Long id);
 }

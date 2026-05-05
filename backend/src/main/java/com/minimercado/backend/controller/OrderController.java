@@ -59,6 +59,12 @@ public class OrderController {
         return ResponseEntity.noContent().build();
     }
 
+    @PatchMapping(API_ORDER_MARK_AS_PAID)
+    public ResponseEntity<Void> markAsPaid(@PathVariable Long id) {
+        orderService.markAsPaid(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @PatchMapping(API_ORDER_FINISH)
     public ResponseEntity<Void> finish(@PathVariable Long id) {
         orderService.finish(id);

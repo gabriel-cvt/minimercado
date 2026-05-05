@@ -9,6 +9,7 @@ import com.minimercado.backend.dto.orderItem.OrderItemRequestDTO;
 import com.minimercado.backend.dto.orderPickup.OrderReadyForPickupEvent;
 import com.minimercado.backend.enums.OrderKitchenEventType;
 import com.minimercado.backend.enums.OrderStatus;
+import com.minimercado.backend.enums.PaymentStatus;
 import com.minimercado.backend.mapper.OrderMapper;
 import com.minimercado.backend.model.Client;
 import com.minimercado.backend.model.Order;
@@ -102,6 +103,7 @@ public class OrderServiceImpl implements OrderService{
         }
 
         order.setStatus(OrderStatus.CANCELLED);
+        order.setPaymentStatus(PaymentStatus.CANCELLED);
         orderRepository.save(order);
 
         publishKitchenEvent(order, OrderKitchenEventType.CANCELLED);
@@ -126,6 +128,24 @@ public class OrderServiceImpl implements OrderService{
         // Evento para avisar que o pedido está pronto para coleta
         eventPublisher.publishEvent(new OrderReadyForPickupEvent(order.getId()));
     }
+
+    @Transactional
+    public void markAsPaid(Long id) {
+        Order order = findOrderById(id);
+
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            throw new IllegalStateException();
+        }
+
+        if (order.getPaymentStatus() == PaymentStatus.PAID) {
+            return;
+        }
+
+        order.setPaymentStatus(PaymentStatus.PAID);
+
+        orderRepository.save(order);
+    }
+
 
     @Override
     public void finish(Long id) {
