@@ -24,13 +24,13 @@ public class OrderController {
     private final OrderService orderService;
 
     @GetMapping(API_ORDER_ID)
-    public ResponseEntity<OrderResponseDTO> getById(@PathVariable UUID id) {
+    public ResponseEntity<OrderResponseDTO> getById(@PathVariable Long id) {
         return ResponseEntity.ok(orderService.get(id));
     }
 
     @GetMapping(API_ORDER_GET_BY_CLIENT)
     public ResponseEntity<Page<OrderResponseDTO>> getByClient(
-            @PathVariable("id") UUID clientId,
+            @PathVariable("id") Long clientId,
             @PageableDefault(size = 10, sort = "orderTime") Pageable pageable) {
         return ResponseEntity.ok(orderService.getFromClient(clientId, pageable));
     }
@@ -43,13 +43,13 @@ public class OrderController {
 
     @PutMapping(API_ORDER_ID)
     public ResponseEntity<OrderResponseDTO> update(
-            @PathVariable UUID id,
+            @PathVariable Long id,
             @RequestBody @Valid OrderPutDTO data) {
         return ResponseEntity.ok(orderService.edit(id, data));
     }
 
     @PatchMapping(API_ORDER_CANCEL)
-    public ResponseEntity<Void> cancel(@PathVariable UUID id) {
+    public ResponseEntity<Void> cancel(@PathVariable Long id) {
         orderService.cancel(id);
         return ResponseEntity.noContent().build();
     }

@@ -5,13 +5,11 @@ import com.minimercado.backend.dto.product.ProductResponseDTO;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
-import java.util.UUID;
-
 public interface ProductService {
-    ProductResponseDTO getById(UUID uuid);
+    ProductResponseDTO getById(Long id);
     Page<ProductResponseDTO> getAll(Pageable pageable);
     ProductResponseDTO create(ProductPostDTO data);
-    ProductResponseDTO update(UUID uuid, ProductPostDTO data);
-    void delete(UUID uuid);
-    void updateStock(UUID uuid, Integer quantity);
+    ProductResponseDTO update(Long id, ProductPostDTO data);
+    void delete(Long id);
+    void updateStock(Long id, Integer quantity);
 }

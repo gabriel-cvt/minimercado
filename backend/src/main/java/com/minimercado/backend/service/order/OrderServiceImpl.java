@@ -21,7 +21,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.UUID;
 
 
 @Service
@@ -34,17 +33,17 @@ public class OrderServiceImpl implements OrderService{
     private final OrderMapper mapper;
 
     @Override
-    public OrderResponseDTO get(UUID uuid){
+    public OrderResponseDTO get(Long id){
         Order order = orderRepository
-                .findById(uuid)
+                .findById(id)
                 .orElseThrow(EntityNotFoundException::new);
         return mapper.toResponse(order);
     }
 
     @Override
-    public Page<OrderResponseDTO> getFromClient(UUID clientUuid, Pageable pageable) {
+    public Page<OrderResponseDTO> getFromClient(Long clienteId, Pageable pageable) {
         return orderRepository
-                .findByClientId(clientUuid, pageable)
+                .findByClientId(clienteId, pageable)
                 .map(mapper::toResponse);
     }
 
@@ -74,8 +73,8 @@ public class OrderServiceImpl implements OrderService{
 
     @Override
     @Transactional
-    public OrderResponseDTO edit(UUID uuid, OrderPutDTO data) {
-        Order order = orderRepository.findById(uuid)
+    public OrderResponseDTO edit(Long id, OrderPutDTO data) {
+        Order order = orderRepository.findById(id)
                 .orElseThrow(EntityNotFoundException::new);
 
         if (!order.getClient().getId().equals(data.clientId())) {
@@ -98,8 +97,8 @@ public class OrderServiceImpl implements OrderService{
 
     @Override
     @Transactional
-    public void cancel(UUID uuid) {
-        Order order = orderRepository.findById(uuid)
+    public void cancel(Long id) {
+        Order order = orderRepository.findById(id)
                 .orElseThrow(EntityNotFoundException::new);
 
         order.setStatus(OrderStatus.CANCELLED);

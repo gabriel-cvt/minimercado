@@ -12,7 +12,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.UUID;
 
 import static com.minimercado.backend.controller.ApiRoutes.*;
 
@@ -29,7 +28,7 @@ public class ProductController {
     }
 
     @GetMapping(API_PRODUCT_ID)
-    public ResponseEntity<ProductResponseDTO> getById(@PathVariable UUID id) {
+    public ResponseEntity<ProductResponseDTO> getById(@PathVariable Long id) {
         return ResponseEntity.ok(productService.getById(id));
     }
 
@@ -40,13 +39,13 @@ public class ProductController {
 
     @PutMapping(API_PRODUCT_ID)
     public ResponseEntity<ProductResponseDTO> update(
-            @PathVariable UUID id,
+            @PathVariable Long id,
             @RequestBody @Valid ProductPostDTO data) {
         return ResponseEntity.ok(productService.update(id, data));
     }
 
     @DeleteMapping(API_PRODUCT_ID)
-    public ResponseEntity<Void> delete(@PathVariable UUID id) {
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
         productService.delete(id);
         return ResponseEntity.noContent().build();
     }

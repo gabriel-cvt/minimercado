@@ -13,7 +13,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -24,8 +23,8 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional(readOnly = true)
-    public ProductResponseDTO getById(UUID uuid) {
-        return productRepository.findById(uuid)
+    public ProductResponseDTO getById(Long id) {
+        return productRepository.findById(id)
                 .map(productMapper::toResponse)
                 .orElseThrow(EntityNotFoundException::new);
     }
@@ -50,7 +49,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public ProductResponseDTO update(UUID id, ProductPostDTO data) {
+    public ProductResponseDTO update(Long id, ProductPostDTO data) {
         Product product = productRepository.findById(id)
                 .orElseThrow(EntityNotFoundException::new);
 
@@ -62,7 +61,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public void delete(UUID id) {
+    public void delete(Long id) {
         if (!productRepository.existsById(id)) {
             throw new EntityNotFoundException();
         }
@@ -71,7 +70,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public void updateStock(UUID id, Integer quantity) {
+    public void updateStock(Long id, Integer quantity) {
         // Implementar atualização de estoque caso vá existir
     }
 }
