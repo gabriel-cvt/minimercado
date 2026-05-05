@@ -53,9 +53,15 @@ public class OrderController {
         return ResponseEntity.noContent().build();
     }
 
-    @PatchMapping("/{id}/ready")
-    public ResponseEntity<OrderResponseDTO> markAsReady(@PathVariable Long id) {
+    @PatchMapping(API_ORDER_MARK_AS_READY)
+    public ResponseEntity<Void> markAsReady(@PathVariable Long id) {
         orderService.markAsReady(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping(API_ORDER_FINISH)
+    public ResponseEntity<Void> finish(@PathVariable Long id) {
+        orderService.finish(id);
         return ResponseEntity.noContent().build();
     }
 

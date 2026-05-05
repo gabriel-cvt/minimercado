@@ -127,6 +127,18 @@ public class OrderServiceImpl implements OrderService{
         eventPublisher.publishEvent(new OrderReadyForPickupEvent(order.getId()));
     }
 
+    @Override
+    public void finish(Long id) {
+        Order order = findOrderById(id);
+
+        if (order.getStatus() != OrderStatus.READY_FOR_PICKUP) {
+            throw new IllegalStateException();
+        }
+
+        order.setStatus(OrderStatus.FINISHED);
+        orderRepository.save(order);
+    }
+
     private Order findOrderById(Long id) {
         return orderRepository.findById(id)
                 .orElseThrow(EntityNotFoundException::new);

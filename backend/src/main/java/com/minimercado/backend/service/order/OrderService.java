@@ -19,4 +19,6 @@ public interface OrderService {
     void cancel(Long id);
 
     void markAsReady(Long id);
+
+    void finish(Long id);
 }
