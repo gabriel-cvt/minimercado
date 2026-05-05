@@ -3,9 +3,11 @@ package com.minimercado.backend.service.event.listener;
 import com.minimercado.backend.dto.event.OrderCancelledEvent;
 import com.minimercado.backend.dto.event.OrderKitchenEvent;
 import com.minimercado.backend.enums.OrderKitchenEventType;
+import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
+@Component
 public class KitchenOrderListener {
 
 
