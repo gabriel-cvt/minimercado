@@ -10,7 +10,7 @@ public interface OrderService {
 
     OrderResponseDTO get(Long id);
 
-    Page<OrderResponseDTO> getFromClient(Long clientId, Pageable pageable);
+    Page<OrderResponseDTO> getFromClient(String clientCpf, Pageable pageable);
 
     OrderResponseDTO create(OrderPostDTO data);
 

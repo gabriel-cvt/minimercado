@@ -9,6 +9,6 @@ public record OrderPutDTO(
         @NotEmpty(message = "O pedido deve conter ao menos um produto")
         List<OrderItemRequestDTO> items,
 
-        @NotNull(message = "O ID da pessoa é obrigatório")
-        Long clientId
+        @NotNull(message = "O cpf do cliente é obrigatório")
+        String clienteCpf
 ) {}

@@ -1,5 +1,6 @@
 package com.minimercado.backend.dto.order;
 
+import com.minimercado.backend.dto.client.ClientResponseDTO;
 import com.minimercado.backend.dto.orderItem.OrderItemResponseDTO;
 
 import java.time.LocalDateTime;
@@ -9,6 +10,5 @@ public record OrderResponseDTO(
         Long id,
         LocalDateTime orderTime,
         List<OrderItemResponseDTO> items,
-        String clientName,
-        Long clientId
+        ClientResponseDTO client
 ) {}

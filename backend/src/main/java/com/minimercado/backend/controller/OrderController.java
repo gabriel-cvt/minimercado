@@ -27,11 +27,11 @@ public class OrderController {
         return ResponseEntity.ok(orderService.get(id));
     }
 
-    @GetMapping(API_ORDER_GET_BY_CLIENT)
+    @GetMapping(API_ORDER_GET_BY_CLIENT_CPF)
     public ResponseEntity<Page<OrderResponseDTO>> getByClient(
-            @PathVariable("id") Long clientId,
+            @PathVariable("id") String clientCpf,
             @PageableDefault(size = 10, sort = "orderTime") Pageable pageable) {
-        return ResponseEntity.ok(orderService.getFromClient(clientId, pageable));
+        return ResponseEntity.ok(orderService.getFromClient(clientCpf, pageable));
     }
 
     @PostMapping(API_ORDER)

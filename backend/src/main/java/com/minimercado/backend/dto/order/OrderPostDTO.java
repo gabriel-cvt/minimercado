@@ -10,6 +10,6 @@ public record OrderPostDTO(
         @NotEmpty(message = "A lista de produtos não pode estar vazia")
         List<OrderItemRequestDTO> items,
 
-        @NotNull(message = "O ID do cliente é obrigatório")
-        Long clientId
+        @NotNull(message = "O cpf do cliente é obrigatório")
+        String clienteCpf
 ) {}

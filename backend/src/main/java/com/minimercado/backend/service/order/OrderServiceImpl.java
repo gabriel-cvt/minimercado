@@ -15,9 +15,9 @@ import com.minimercado.backend.model.Client;
 import com.minimercado.backend.model.Order;
 import com.minimercado.backend.model.OrderItem;
 import com.minimercado.backend.model.Product;
-import com.minimercado.backend.repository.ClientRepository;
 import com.minimercado.backend.repository.OrderRepository;
 import com.minimercado.backend.repository.ProductRepository;
+import com.minimercado.backend.service.client.ClientService;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -34,7 +34,7 @@ import java.util.List;
 public class OrderServiceImpl implements OrderService{
 
     private final OrderRepository orderRepository;
-    private final ClientRepository clientRepository;
+    private final ClientService clientService;
     private final ProductRepository productRepository;
     private final OrderMapper mapper;
     private final ApplicationEventPublisher eventPublisher;
@@ -45,9 +45,9 @@ public class OrderServiceImpl implements OrderService{
     }
 
     @Override
-    public Page<OrderResponseDTO> getFromClient(Long clienteId, Pageable pageable) {
+    public Page<OrderResponseDTO> getFromClient(String clientCpf, Pageable pageable) {
         return orderRepository
-                .findByClientId(clienteId, pageable)
+                .findByClientCpf(clientCpf, pageable)
                 .map(mapper::toResponse);
     }
 
@@ -55,7 +55,9 @@ public class OrderServiceImpl implements OrderService{
     @Transactional
     public OrderResponseDTO create(OrderPostDTO data) {
         Order order = new Order();
-        order.setClient(findClientById(data.clientId()));
+        Client client = clientService.findEntityByCpf(data.clienteCpf());
+        order.setClient(client);
+
         order.setItems(buildOrderItems(data.items(), order));
         order.calculateTotal();
         
@@ -75,8 +77,9 @@ public class OrderServiceImpl implements OrderService{
             throw new IllegalStateException();
         }
 
-        if (!order.getClient().getId().equals(data.clientId())) {
-            order.setClient(findClientById(data.clientId()));
+        Client client = clientService.findEntityByCpf(data.clienteCpf());
+        if (!order.getClient().getId().equals(client.getId())) {
+            order.setClient(client);
         }
 
         order.getItems().clear();
@@ -161,11 +164,6 @@ public class OrderServiceImpl implements OrderService{
 
     private Order findOrderById(Long id) {
         return orderRepository.findById(id)
-                .orElseThrow(EntityNotFoundException::new);
-    }
-
-    private Client findClientById(Long id) {
-        return clientRepository.findById(id)
                 .orElseThrow(EntityNotFoundException::new);
     }
 
