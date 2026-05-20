@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ClipboardList, Clock, Flame, CheckCircle2, Package, ChefHat, Coffee, IceCream, Utensils } from "lucide-react";
 import { useStore, formatBRL, formatTime } from "@/lib/store";
 import type { KitchenName, OrderStatus } from "@/lib/types";
+import { useKitchenOrdersSocket } from "@/websocket/websocket-hooks";
 
 const statusConfig: Record<OrderStatus, { label: string; color: string; bg: string; Icon: typeof Flame }> = {
   preparing: { label: "Em preparo", color: "text-status-preparing", bg: "bg-status-preparing/15", Icon: Flame },
@@ -16,6 +17,7 @@ const kitchenIcons: Record<KitchenName, typeof Flame> = {
 
 export function OrderDetails() {
   const { orders, setOrderStatus } = useStore();
+  const cancelByNumber = useStore((s) => s.cancelByNumber);
   const [selectedId, setSelectedId] = useState<string | null>(orders[0]?.id ?? null);
   const [confirmFinish, setConfirmFinish] = useState(false);
   const [, force] = useState(0);
@@ -28,6 +30,12 @@ export function OrderDetails() {
   useEffect(() => {
     if (!selectedId && orders[0]) setSelectedId(orders[0].id);
   }, [orders, selectedId]);
+
+  useKitchenOrdersSocket((evt) => {
+    if (evt.type === "CANCELLED") {
+      cancelByNumber(evt.orderId);
+    }
+  });
 
   const selected = orders.find((o) => o.id === selectedId);
   const active = orders.filter((o) => o.status !== "finished");

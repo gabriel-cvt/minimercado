@@ -72,6 +72,8 @@ interface State {
   placeOrder: (paymentMethod: PaymentMethod) => Order;
   setOrderStatus: (id: string, status: OrderStatus) => void;
   markPaid: (id: string) => void;
+  markReadyByNumber: (orderNumber: number) => void;
+  cancelByNumber: (orderNumber: number) => void;
 }
 
 export const useStore = create<State>((set, get) => ({
@@ -124,6 +126,16 @@ export const useStore = create<State>((set, get) => ({
   })),
   markPaid: (id) => set((s) => ({
     orders: s.orders.map((o) => o.id === id ? { ...o, paymentStatus: "paid" } : o),
+  })),
+  markReadyByNumber: (orderNumber) => set((s) => ({
+    orders: s.orders.map((o) =>
+      o.number === orderNumber
+        ? { ...o, status: "finished", finishedAt: o.finishedAt ?? Date.now() }
+        : o,
+    ),
+  })),
+  cancelByNumber: (orderNumber) => set((s) => ({
+    orders: s.orders.filter((o) => o.number !== orderNumber),
   })),
 }));
 

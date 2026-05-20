@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Flame, CheckCircle2 } from "lucide-react";
 import { useStore } from "@/lib/store";
+import { usePickupOrdersSocket } from "@/websocket/websocket-hooks";
 
 export const Route = createFileRoute("/painel")({
   head: () => ({ meta: [{ title: "Painel de Pedidos — McDominus" }] }),
@@ -11,12 +12,17 @@ export const Route = createFileRoute("/painel")({
 
 function DisplayPage() {
   const orders = useStore((s) => s.orders);
+  const markReadyByNumber = useStore((s) => s.markReadyByNumber);
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
     const t = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  usePickupOrdersSocket((evt) => {
+    markReadyByNumber(evt.orderId);
+  });
 
   const preparing = orders.filter((o) => o.status !== "finished");
   const ready = orders.filter((o) => o.status === "finished" && o.finishedAt && Date.now() - o.finishedAt < 5 * 60_000);

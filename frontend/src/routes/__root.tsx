@@ -11,6 +11,8 @@ import {
 
 import appCss from "../styles.css?url";
 import { Header } from "@/components/mcd/Header";
+import { Toaster } from "@/components/ui/sonner";
+import { WebSocketProvider } from "@/websocket/websocket-provider";
 
 function NotFoundComponent() {
   return (
@@ -107,12 +109,15 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="min-h-screen flex flex-col">
-        {!isDisplay && <Header />}
-        <main className="flex-1">
-          <Outlet />
-        </main>
-      </div>
+      <WebSocketProvider>
+        <div className="min-h-screen flex flex-col">
+          {!isDisplay && <Header />}
+          <main className="flex-1">
+            <Outlet />
+          </main>
+        </div>
+        <Toaster position="top-right" richColors closeButton />
+      </WebSocketProvider>
     </QueryClientProvider>
   );
 }
