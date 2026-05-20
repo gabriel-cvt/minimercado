@@ -10,8 +10,8 @@ import {
 
 export function useWebSocketStatus() {
   const [state, setState] = useState<{ status: ConnectionStatus; attempts: number }>({
-    status: websocketService.getStatus(),
-    attempts: websocketService.getAttempts(),
+    status: "idle",
+    attempts: 0,
   });
 
   useEffect(() => {
