@@ -1,11 +1,12 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, ShoppingBag, BarChart3, Tv, Menu, X } from "lucide-react";
+import { Home, ShoppingBag, BarChart3, Tv, Menu, X, ChefHat } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const tabs = [
   { to: "/", label: "Início", icon: Home },
   { to: "/orders", label: "Pedidos", icon: ShoppingBag },
+  { to: "/cozinha", label: "Cozinha", icon: ChefHat },
   { to: "/dashboard", label: "Dashboard", icon: BarChart3 },
 ] as const;
 
@@ -21,8 +22,12 @@ export function Header() {
             <span className="text-3xl font-black text-primary leading-none">M</span>
           </div>
           <div className="leading-tight">
-            <div className="text-lg md:text-xl font-black tracking-tight text-foreground">McDominus</div>
-            <div className="text-[11px] text-muted-foreground font-medium hidden sm:block">Order Management System</div>
+            <div className="text-lg md:text-xl font-black tracking-tight text-foreground">
+              McDominus
+            </div>
+            <div className="text-[11px] text-muted-foreground font-medium hidden sm:block">
+              Order Management System
+            </div>
           </div>
         </Link>
 
@@ -31,21 +36,37 @@ export function Header() {
             const active = path === t.to;
             const Icon = t.icon;
             return (
-              <Link key={t.to} to={t.to} className="relative px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm font-semibold transition-colors hover:bg-muted">
-                <Icon className={`w-4 h-4 transition-colors ${active ? "text-primary" : "text-muted-foreground"}`} />
+              <Link
+                key={t.to}
+                to={t.to}
+                className="relative px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm font-semibold transition-colors hover:bg-muted"
+              >
+                <Icon
+                  className={`w-4 h-4 transition-colors ${active ? "text-primary" : "text-muted-foreground"}`}
+                />
                 <span className={active ? "text-primary" : "text-foreground/80"}>{t.label}</span>
                 {active && (
-                  <motion.div layoutId="tab-underline" className="absolute -bottom-[19px] left-3 right-3 h-[3px] bg-primary rounded-full" />
+                  <motion.div
+                    layoutId="tab-underline"
+                    className="absolute -bottom-[19px] left-3 right-3 h-[3px] bg-primary rounded-full"
+                  />
                 )}
               </Link>
             );
           })}
-          <Link to="/painel" className="ml-3 px-4 py-2.5 rounded-xl bg-foreground text-background text-sm font-semibold flex items-center gap-2 hover:bg-foreground/90 transition-colors">
+          <Link
+            to="/painel"
+            className="ml-3 px-4 py-2.5 rounded-xl bg-foreground text-background text-sm font-semibold flex items-center gap-2 hover:bg-foreground/90 transition-colors"
+          >
             <Tv className="w-4 h-4" /> Painel de Pedidos
           </Link>
         </nav>
 
-        <button onClick={() => setOpen(!open)} className="md:hidden w-10 h-10 rounded-xl bg-muted flex items-center justify-center" aria-label="Menu">
+        <button
+          onClick={() => setOpen(!open)}
+          className="md:hidden w-10 h-10 rounded-xl bg-muted flex items-center justify-center"
+          aria-label="Menu"
+        >
           {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>
@@ -53,7 +74,9 @@ export function Header() {
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
             className="md:hidden overflow-hidden border-t bg-white"
           >
             <div className="px-4 py-3 flex flex-col gap-1">
@@ -61,13 +84,21 @@ export function Header() {
                 const Icon = t.icon;
                 const active = path === t.to;
                 return (
-                  <Link key={t.to} to={t.to} onClick={() => setOpen(false)}
-                    className={`px-4 py-3 rounded-xl flex items-center gap-3 font-semibold ${active ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
+                  <Link
+                    key={t.to}
+                    to={t.to}
+                    onClick={() => setOpen(false)}
+                    className={`px-4 py-3 rounded-xl flex items-center gap-3 font-semibold ${active ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                  >
                     <Icon className="w-5 h-5" /> {t.label}
                   </Link>
                 );
               })}
-              <Link to="/painel" onClick={() => setOpen(false)} className="px-4 py-3 rounded-xl flex items-center gap-3 font-semibold bg-foreground text-background">
+              <Link
+                to="/painel"
+                onClick={() => setOpen(false)}
+                className="px-4 py-3 rounded-xl flex items-center gap-3 font-semibold bg-foreground text-background"
+              >
                 <Tv className="w-5 h-5" /> Painel de Pedidos
               </Link>
             </div>

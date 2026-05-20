@@ -4,6 +4,7 @@ import {
   WS_TOPICS,
   type ConnectionStatus,
   type KitchenOrderEvent,
+  type OrderRealtimeEvent,
   type PickupOrderEvent,
 } from "./websocket-types";
 
@@ -14,34 +15,40 @@ export function useWebSocketStatus() {
   });
 
   useEffect(() => {
-    return websocketService.onStatusChange((status, attempts) =>
-      setState({ status, attempts }),
-    );
+    return websocketService.onStatusChange((status, attempts) => setState({ status, attempts }));
   }, []);
 
   return state;
 }
 
-export function useKitchenOrdersSocket(
-  onEvent: (event: KitchenOrderEvent) => void,
-): void {
+export function useKitchenOrdersSocket(onEvent: (event: KitchenOrderEvent) => void): void {
   useEffect(() => {
-    return websocketService.subscribe<KitchenOrderEvent>(
-      WS_TOPICS.kitchenOrders,
-      (payload) => onEvent(payload),
+    return websocketService.subscribe<KitchenOrderEvent>(WS_TOPICS.kitchenOrders, (payload) =>
+      onEvent(payload),
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onEvent]);
 }
 
-export function usePickupOrdersSocket(
-  onEvent: (event: PickupOrderEvent) => void,
-): void {
+export function useOrdersSocket(onEvent: (event: OrderRealtimeEvent) => void): void {
   useEffect(() => {
-    return websocketService.subscribe<PickupOrderEvent>(
-      WS_TOPICS.pickupOrders,
-      (payload) => onEvent(payload),
+    return websocketService.subscribe<OrderRealtimeEvent>(WS_TOPICS.orders, (payload) =>
+      onEvent(payload),
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onEvent]);
+}
+
+export function usePublicOrdersSocket(onEvent: (event: OrderRealtimeEvent) => void): void {
+  useEffect(() => {
+    return websocketService.subscribe<OrderRealtimeEvent>(WS_TOPICS.ordersPublic, (payload) =>
+      onEvent(payload),
+    );
+  }, [onEvent]);
+}
+
+export function usePickupOrdersSocket(onEvent: (event: PickupOrderEvent) => void): void {
+  useEffect(() => {
+    return websocketService.subscribe<PickupOrderEvent>(WS_TOPICS.pickupOrders, (payload) =>
+      onEvent(payload),
+    );
   }, [onEvent]);
 }

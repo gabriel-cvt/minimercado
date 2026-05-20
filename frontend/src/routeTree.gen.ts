@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as PainelRouteImport } from './routes/painel'
 import { Route as OrdersRouteImport } from './routes/orders'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as CozinhaRouteImport } from './routes/cozinha'
 import { Route as IndexRouteImport } from './routes/index'
 
 const PainelRoute = PainelRouteImport.update({
@@ -29,6 +30,11 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CozinhaRoute = CozinhaRouteImport.update({
+  id: '/cozinha',
+  path: '/cozinha',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -37,12 +43,14 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/cozinha': typeof CozinhaRoute
   '/dashboard': typeof DashboardRoute
   '/orders': typeof OrdersRoute
   '/painel': typeof PainelRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/cozinha': typeof CozinhaRoute
   '/dashboard': typeof DashboardRoute
   '/orders': typeof OrdersRoute
   '/painel': typeof PainelRoute
@@ -50,20 +58,22 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/cozinha': typeof CozinhaRoute
   '/dashboard': typeof DashboardRoute
   '/orders': typeof OrdersRoute
   '/painel': typeof PainelRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/dashboard' | '/orders' | '/painel'
+  fullPaths: '/' | '/cozinha' | '/dashboard' | '/orders' | '/painel'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/dashboard' | '/orders' | '/painel'
-  id: '__root__' | '/' | '/dashboard' | '/orders' | '/painel'
+  to: '/' | '/cozinha' | '/dashboard' | '/orders' | '/painel'
+  id: '__root__' | '/' | '/cozinha' | '/dashboard' | '/orders' | '/painel'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CozinhaRoute: typeof CozinhaRoute
   DashboardRoute: typeof DashboardRoute
   OrdersRoute: typeof OrdersRoute
   PainelRoute: typeof PainelRoute
@@ -92,6 +102,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/cozinha': {
+      id: '/cozinha'
+      path: '/cozinha'
+      fullPath: '/cozinha'
+      preLoaderRoute: typeof CozinhaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -104,6 +121,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CozinhaRoute: CozinhaRoute,
   DashboardRoute: DashboardRoute,
   OrdersRoute: OrdersRoute,
   PainelRoute: PainelRoute,
