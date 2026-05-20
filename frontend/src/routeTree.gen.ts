@@ -9,24 +9,24 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as ProductsRouteImport } from './routes/products'
-import { Route as ManageRouteImport } from './routes/manage'
-import { Route as DisplayRouteImport } from './routes/display'
+import { Route as PainelRouteImport } from './routes/painel'
+import { Route as OrdersRouteImport } from './routes/orders'
+import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
 
-const ProductsRoute = ProductsRouteImport.update({
-  id: '/products',
-  path: '/products',
+const PainelRoute = PainelRouteImport.update({
+  id: '/painel',
+  path: '/painel',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ManageRoute = ManageRouteImport.update({
-  id: '/manage',
-  path: '/manage',
+const OrdersRoute = OrdersRouteImport.update({
+  id: '/orders',
+  path: '/orders',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DisplayRoute = DisplayRouteImport.update({
-  id: '/display',
-  path: '/display',
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -37,59 +37,59 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/display': typeof DisplayRoute
-  '/manage': typeof ManageRoute
-  '/products': typeof ProductsRoute
+  '/dashboard': typeof DashboardRoute
+  '/orders': typeof OrdersRoute
+  '/painel': typeof PainelRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/display': typeof DisplayRoute
-  '/manage': typeof ManageRoute
-  '/products': typeof ProductsRoute
+  '/dashboard': typeof DashboardRoute
+  '/orders': typeof OrdersRoute
+  '/painel': typeof PainelRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/display': typeof DisplayRoute
-  '/manage': typeof ManageRoute
-  '/products': typeof ProductsRoute
+  '/dashboard': typeof DashboardRoute
+  '/orders': typeof OrdersRoute
+  '/painel': typeof PainelRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/display' | '/manage' | '/products'
+  fullPaths: '/' | '/dashboard' | '/orders' | '/painel'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/display' | '/manage' | '/products'
-  id: '__root__' | '/' | '/display' | '/manage' | '/products'
+  to: '/' | '/dashboard' | '/orders' | '/painel'
+  id: '__root__' | '/' | '/dashboard' | '/orders' | '/painel'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  DisplayRoute: typeof DisplayRoute
-  ManageRoute: typeof ManageRoute
-  ProductsRoute: typeof ProductsRoute
+  DashboardRoute: typeof DashboardRoute
+  OrdersRoute: typeof OrdersRoute
+  PainelRoute: typeof PainelRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/products': {
-      id: '/products'
-      path: '/products'
-      fullPath: '/products'
-      preLoaderRoute: typeof ProductsRouteImport
+    '/painel': {
+      id: '/painel'
+      path: '/painel'
+      fullPath: '/painel'
+      preLoaderRoute: typeof PainelRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/manage': {
-      id: '/manage'
-      path: '/manage'
-      fullPath: '/manage'
-      preLoaderRoute: typeof ManageRouteImport
+    '/orders': {
+      id: '/orders'
+      path: '/orders'
+      fullPath: '/orders'
+      preLoaderRoute: typeof OrdersRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/display': {
-      id: '/display'
-      path: '/display'
-      fullPath: '/display'
-      preLoaderRoute: typeof DisplayRouteImport
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -104,9 +104,9 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  DisplayRoute: DisplayRoute,
-  ManageRoute: ManageRoute,
-  ProductsRoute: ProductsRoute,
+  DashboardRoute: DashboardRoute,
+  OrdersRoute: OrdersRoute,
+  PainelRoute: PainelRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

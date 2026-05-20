@@ -1,12 +1,12 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { ShoppingBag, PackagePlus, ClipboardList, Tv, Menu, X } from "lucide-react";
+import { Home, ShoppingBag, BarChart3, Tv, Menu, X } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const tabs = [
-  { to: "/", label: "Orders", icon: ShoppingBag },
-  { to: "/products", label: "Products", icon: PackagePlus },
-  { to: "/manage", label: "Order Details", icon: ClipboardList },
+  { to: "/", label: "Início", icon: Home },
+  { to: "/orders", label: "Pedidos", icon: ShoppingBag },
+  { to: "/dashboard", label: "Dashboard", icon: BarChart3 },
 ] as const;
 
 export function Header() {
@@ -40,8 +40,8 @@ export function Header() {
               </Link>
             );
           })}
-          <Link to="/display" className="ml-3 px-4 py-2.5 rounded-xl bg-foreground text-background text-sm font-semibold flex items-center gap-2 hover:bg-foreground/90 transition-colors">
-            <Tv className="w-4 h-4" /> Display Panel
+          <Link to="/painel" className="ml-3 px-4 py-2.5 rounded-xl bg-foreground text-background text-sm font-semibold flex items-center gap-2 hover:bg-foreground/90 transition-colors">
+            <Tv className="w-4 h-4" /> Painel de Pedidos
           </Link>
         </nav>
 
@@ -67,8 +67,8 @@ export function Header() {
                   </Link>
                 );
               })}
-              <Link to="/display" onClick={() => setOpen(false)} className="px-4 py-3 rounded-xl flex items-center gap-3 font-semibold bg-foreground text-background">
-                <Tv className="w-5 h-5" /> Display Panel
+              <Link to="/painel" onClick={() => setOpen(false)} className="px-4 py-3 rounded-xl flex items-center gap-3 font-semibold bg-foreground text-background">
+                <Tv className="w-5 h-5" /> Painel de Pedidos
               </Link>
             </div>
           </motion.div>

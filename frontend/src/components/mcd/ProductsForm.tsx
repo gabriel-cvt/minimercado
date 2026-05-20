@@ -1,4 +1,3 @@
-import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useForm } from "react-hook-form";
@@ -8,26 +7,24 @@ import { ImageIcon, CheckCircle2, X, PackagePlus } from "lucide-react";
 import { useStore, formatBRL } from "@/lib/store";
 import type { KitchenName } from "@/lib/types";
 
-export const Route = createFileRoute("/products")({ component: ProductsPage });
-
-const kitchens: KitchenName[] = ["Sandwiches", "Drinks", "Desserts", "General"];
+const kitchens: KitchenName[] = ["Sanduíches", "Bebidas", "Sobremesas", "Geral"];
 
 const schema = z.object({
-  name: z.string().trim().min(2, "Name too short").max(80),
-  price: z.number().positive("Price must be > 0").max(10000),
-  kitchen: z.enum(["Sandwiches", "Drinks", "Desserts", "General"]),
-  imageUrl: z.string().trim().min(4, "Image URL required").max(500),
+  name: z.string().trim().min(2, "Nome muito curto").max(80, "Nome muito longo"),
+  price: z.number({ invalid_type_error: "Informe um preço" }).positive("O preço deve ser maior que 0").max(10000, "Preço muito alto"),
+  kitchen: z.enum(["Sanduíches", "Bebidas", "Sobremesas", "Geral"]),
+  imageUrl: z.string().trim().url("Informe uma URL válida").max(500),
 });
 type FormData = z.infer<typeof schema>;
 
-function ProductsPage() {
+export function ProductsForm() {
   const [confirm, setConfirm] = useState<FormData | null>(null);
   const [success, setSuccess] = useState(false);
   const { addProduct, products } = useStore();
 
   const { register, handleSubmit, watch, formState: { errors, isValid }, reset } = useForm<FormData>({
     resolver: zodResolver(schema), mode: "onChange",
-    defaultValues: { name: "", price: 0, kitchen: "Sandwiches", imageUrl: "" },
+    defaultValues: { name: "", price: 0, kitchen: "Sanduíches", imageUrl: "" },
   });
 
   const imageUrl = watch("imageUrl");
@@ -45,59 +42,58 @@ function ProductsPage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 md:px-6 py-10">
+    <div>
       <div className="flex items-center gap-3 mb-8">
         <div className="w-12 h-12 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-elegant">
           <PackagePlus className="w-6 h-6 text-primary-foreground" />
         </div>
         <div>
-          <h1 className="text-3xl md:text-4xl font-black">Product Registration</h1>
-          <p className="text-muted-foreground">Add new menu items to McDominus</p>
+          <h2 className="text-2xl md:text-3xl font-black">Cadastro de Produtos</h2>
+          <p className="text-muted-foreground">Adicione novos itens ao cardápio do McDominus</p>
         </div>
       </div>
 
       <div className="grid lg:grid-cols-[1fr_400px] gap-8">
         <form onSubmit={handleSubmit(onSubmit)} className="bg-card rounded-3xl shadow-card border p-6 md:p-8 space-y-5">
-          <Field label="Product name" error={errors.name?.message}>
-            <input {...register("name")} placeholder="e.g. McSpicy Deluxe"
-              className="input" />
+          <Field label="Nome do produto" error={errors.name?.message}>
+            <input {...register("name")} placeholder="Ex: McSpicy Deluxe" className="input" />
           </Field>
           <div className="grid sm:grid-cols-2 gap-5">
-            <Field label="Unit price (BRL)" error={errors.price?.message}>
-              <input type="number" step="0.01" {...register("price", { valueAsNumber: true })} placeholder="29.90" className="input font-mono" />
+            <Field label="Preço unitário (R$)" error={errors.price?.message}>
+              <input type="number" step="0.01" {...register("price", { valueAsNumber: true })} placeholder="29,90" className="input font-mono" />
             </Field>
-            <Field label="Responsible kitchen" error={errors.kitchen?.message}>
+            <Field label="Cozinha responsável" error={errors.kitchen?.message}>
               <select {...register("kitchen")} className="input">
-                {kitchens.map((k) => <option key={k} value={k}>{k} Kitchen</option>)}
+                {kitchens.map((k) => <option key={k} value={k}>Cozinha {k}</option>)}
               </select>
             </Field>
           </div>
-          <Field label="Image URL" error={errors.imageUrl?.message}>
+          <Field label="URL da imagem" error={errors.imageUrl?.message}>
             <input {...register("imageUrl")} placeholder="https://..." className="input" onChange={() => setImgErr(false)} />
           </Field>
 
           <button type="submit" disabled={!isValid}
             className="w-full bg-gradient-primary text-primary-foreground font-bold py-4 rounded-xl shadow-elegant disabled:opacity-40 disabled:cursor-not-allowed hover:scale-[1.01] transition-transform">
-            Register Product
+            Cadastrar Produto
           </button>
         </form>
 
         <div className="space-y-6">
           <div className="bg-card rounded-3xl shadow-card border p-6">
-            <p className="text-xs uppercase tracking-wider font-bold text-muted-foreground mb-3">Image preview</p>
+            <p className="text-xs uppercase tracking-wider font-bold text-muted-foreground mb-3">Pré-visualização</p>
             <div className="aspect-[4/3] rounded-2xl bg-muted overflow-hidden flex items-center justify-center">
               {imageUrl && !imgErr ? (
                 <img src={imageUrl} alt="" onError={() => setImgErr(true)} className="w-full h-full object-cover animate-scale-pop" />
               ) : (
                 <div className="text-muted-foreground flex flex-col items-center gap-2">
                   <ImageIcon className="w-10 h-10" />
-                  <span className="text-sm font-medium">{imgErr ? "Failed to load" : "No image"}</span>
+                  <span className="text-sm font-medium">{imgErr ? "Falha ao carregar" : "Sem imagem"}</span>
                 </div>
               )}
             </div>
           </div>
           <div className="bg-card rounded-3xl shadow-card border p-6">
-            <p className="text-xs uppercase tracking-wider font-bold text-muted-foreground mb-3">Catalog ({products.length})</p>
+            <p className="text-xs uppercase tracking-wider font-bold text-muted-foreground mb-3">Catálogo ({products.length})</p>
             <ul className="space-y-2 max-h-64 overflow-y-auto">
               {products.map((p) => (
                 <li key={p.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-muted">
@@ -121,19 +117,19 @@ function ProductsPage() {
             <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
               onClick={(e) => e.stopPropagation()} className="bg-card rounded-3xl shadow-elegant max-w-md w-full p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-black">Confirm registration</h2>
+                <h2 className="text-xl font-black">Confirmar cadastro</h2>
                 <button onClick={() => setConfirm(null)} className="w-9 h-9 rounded-full bg-muted hover:bg-border flex items-center justify-center"><X className="w-4 h-4" /></button>
               </div>
               <img src={confirm.imageUrl} alt="" className="w-full aspect-[4/3] object-cover rounded-2xl mb-4" />
               <div className="space-y-1.5 mb-6">
                 <p className="text-2xl font-black">{confirm.name}</p>
                 <p className="text-primary text-xl font-bold">{formatBRL(confirm.price)}</p>
-                <p className="text-sm text-muted-foreground">{confirm.kitchen} Kitchen</p>
+                <p className="text-sm text-muted-foreground">Cozinha {confirm.kitchen}</p>
               </div>
-              <p className="text-sm text-muted-foreground mb-5">Do you want to confirm this product registration?</p>
+              <p className="text-sm text-muted-foreground mb-5">Deseja confirmar o cadastro deste produto?</p>
               <div className="flex gap-3">
-                <button onClick={() => setConfirm(null)} className="flex-1 py-3 rounded-xl border-2 font-bold hover:bg-muted">Cancel</button>
-                <button onClick={confirmSave} className="flex-1 py-3 rounded-xl bg-gradient-primary text-primary-foreground font-bold shadow-elegant">Confirm</button>
+                <button onClick={() => setConfirm(null)} className="flex-1 py-3 rounded-xl border-2 font-bold hover:bg-muted">Cancelar</button>
+                <button onClick={confirmSave} className="flex-1 py-3 rounded-xl bg-gradient-primary text-primary-foreground font-bold shadow-elegant">Confirmar</button>
               </div>
             </motion.div>
           </motion.div>
@@ -141,7 +137,7 @@ function ProductsPage() {
         {success && (
           <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 50 }}
             className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-status-finished text-white px-6 py-4 rounded-2xl shadow-elegant flex items-center gap-3 font-bold">
-            <CheckCircle2 className="w-5 h-5" /> Product registered successfully
+            <CheckCircle2 className="w-5 h-5" /> Produto cadastrado com sucesso
           </motion.div>
         )}
       </AnimatePresence>

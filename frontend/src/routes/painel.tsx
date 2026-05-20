@@ -4,8 +4,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Flame, CheckCircle2 } from "lucide-react";
 import { useStore } from "@/lib/store";
 
-export const Route = createFileRoute("/display")({
-  head: () => ({ meta: [{ title: "McDominus — Order Display" }] }),
+export const Route = createFileRoute("/painel")({
+  head: () => ({ meta: [{ title: "Painel de Pedidos — McDominus" }] }),
   component: DisplayPage,
 });
 
@@ -19,7 +19,6 @@ function DisplayPage() {
   }, []);
 
   const preparing = orders.filter((o) => o.status !== "finished");
-  // show only finished within last 5 minutes
   const ready = orders.filter((o) => o.status === "finished" && o.finishedAt && Date.now() - o.finishedAt < 5 * 60_000);
 
   return (
@@ -30,19 +29,19 @@ function DisplayPage() {
             <span className="text-4xl font-black text-primary leading-none">M</span>
           </div>
           <div>
-            <h1 className="text-3xl md:text-4xl font-black tracking-tight">McDominus Order Panel</h1>
-            <p className="text-white/60 font-medium">Track your order in real time</p>
+            <h1 className="text-3xl md:text-4xl font-black tracking-tight">Painel de Pedidos McDominus</h1>
+            <p className="text-white/60 font-medium">Acompanhe seu pedido em tempo real</p>
           </div>
         </div>
         <div className="text-right">
-          <p className="text-4xl md:text-5xl font-black tabular-nums">{time.toLocaleTimeString().slice(0, 5)}</p>
-          <p className="text-sm text-white/60">{time.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</p>
+          <p className="text-4xl md:text-5xl font-black tabular-nums">{time.toLocaleTimeString("pt-BR").slice(0, 5)}</p>
+          <p className="text-sm text-white/60">{time.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}</p>
         </div>
       </header>
 
       <div className="grid md:grid-cols-2 gap-px bg-white/10 min-h-[calc(100vh-110px)]">
-        <Column title="Preparing" tone="preparing" orders={preparing} icon={<Flame className="w-8 h-8" />} />
-        <Column title="Ready" tone="ready" orders={ready} icon={<CheckCircle2 className="w-8 h-8" />} />
+        <Column title="Em preparo" tone="preparing" orders={preparing} icon={<Flame className="w-8 h-8" />} />
+        <Column title="Pronto" tone="ready" orders={ready} icon={<CheckCircle2 className="w-8 h-8" />} />
       </div>
     </div>
   );
@@ -58,13 +57,12 @@ function Column({ title, tone, orders, icon }: { title: string; tone: "preparing
         <span className="ml-auto text-2xl font-black opacity-60">{orders.length}</span>
       </div>
       {orders.length === 0 ? (
-        <div className="text-white/30 text-center py-20 font-bold text-xl">No orders</div>
+        <div className="text-white/30 text-center py-20 font-bold text-xl">Nenhum pedido</div>
       ) : (
         <div className={`grid ${isReady ? "grid-cols-2 md:grid-cols-3" : "grid-cols-2 md:grid-cols-3 lg:grid-cols-4"} gap-4`}>
           <AnimatePresence>
             {orders.map((o) => (
-              <motion.div
-                key={o.id} layout
+              <motion.div key={o.id} layout
                 initial={{ scale: 0.7, opacity: 0, rotateY: -20 }}
                 animate={{ scale: 1, opacity: 1, rotateY: 0 }}
                 exit={{ scale: 0.7, opacity: 0 }}

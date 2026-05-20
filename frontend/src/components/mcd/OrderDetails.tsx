@@ -1,29 +1,25 @@
-import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ClipboardList, Clock, Flame, CheckCircle2, X, Package, ChefHat, Coffee, IceCream, Utensils } from "lucide-react";
-import { useStore, formatBRL } from "@/lib/store";
+import { ClipboardList, Clock, Flame, CheckCircle2, Package, ChefHat, Coffee, IceCream, Utensils } from "lucide-react";
+import { useStore, formatBRL, formatTime } from "@/lib/store";
 import type { KitchenName, OrderStatus } from "@/lib/types";
 
-export const Route = createFileRoute("/manage")({ component: ManagePage });
-
 const statusConfig: Record<OrderStatus, { label: string; color: string; bg: string; Icon: typeof Flame }> = {
-  preparing: { label: "Preparing", color: "text-status-preparing", bg: "bg-status-preparing/15", Icon: Flame },
-  assembly: { label: "Awaiting Assembly", color: "text-status-assembly", bg: "bg-status-assembly/15", Icon: Package },
-  finished: { label: "Finished", color: "text-status-finished", bg: "bg-status-finished/15", Icon: CheckCircle2 },
+  preparing: { label: "Em preparo", color: "text-status-preparing", bg: "bg-status-preparing/15", Icon: Flame },
+  assembly: { label: "Aguardando montagem", color: "text-status-assembly", bg: "bg-status-assembly/15", Icon: Package },
+  finished: { label: "Finalizado", color: "text-status-finished", bg: "bg-status-finished/15", Icon: CheckCircle2 },
 };
 
 const kitchenIcons: Record<KitchenName, typeof Flame> = {
-  Sandwiches: ChefHat, Drinks: Coffee, Desserts: IceCream, General: Utensils,
+  Sanduíches: ChefHat, Bebidas: Coffee, Sobremesas: IceCream, Geral: Utensils,
 };
 
-function ManagePage() {
+export function OrderDetails() {
   const { orders, setOrderStatus } = useStore();
   const [selectedId, setSelectedId] = useState<string | null>(orders[0]?.id ?? null);
   const [confirmFinish, setConfirmFinish] = useState(false);
   const [, force] = useState(0);
 
-  // tick for live elapsed times
   useEffect(() => {
     const t = setInterval(() => force((n) => n + 1), 1000);
     return () => clearInterval(t);
@@ -44,26 +40,26 @@ function ManagePage() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 md:px-6 py-8">
+    <div>
       <div className="flex items-center gap-3 mb-6">
         <div className="w-12 h-12 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-elegant">
           <ClipboardList className="w-6 h-6 text-primary-foreground" />
         </div>
         <div>
-          <h1 className="text-3xl md:text-4xl font-black">Order Details</h1>
-          <p className="text-muted-foreground">Live operational view — {active.length} in queue</p>
+          <h2 className="text-2xl md:text-3xl font-black">Detalhamento de Pedidos</h2>
+          <p className="text-muted-foreground">Visão operacional ao vivo — {active.length} na fila</p>
         </div>
       </div>
 
       {orders.length === 0 ? (
         <div className="bg-card rounded-3xl border p-16 text-center">
           <ClipboardList className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
-          <p className="text-xl font-bold mb-1">No orders yet</p>
-          <p className="text-muted-foreground">Place an order from the Orders tab to see it here.</p>
+          <p className="text-xl font-bold mb-1">Nenhum pedido ainda</p>
+          <p className="text-muted-foreground">Crie um pedido na aba "Realização de Pedidos" para visualizá-lo aqui.</p>
         </div>
       ) : (
         <div className="grid lg:grid-cols-[360px_1fr] gap-6">
-          <div className="space-y-3 lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto pr-1">
+          <div className="space-y-3 lg:max-h-[calc(100vh-260px)] lg:overflow-y-auto pr-1">
             <AnimatePresence initial={false}>
               {[...active, ...finished].map((o) => {
                 const cfg = statusConfig[o.status];
@@ -84,7 +80,7 @@ function ManagePage() {
                     <p className="font-semibold text-sm truncate">{o.customerName}</p>
                     <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
                       <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" /> {fmtElapsed(elapsed)}</span>
-                      <span>{o.items.reduce((s, i) => s + i.quantity, 0)} items · <span className="font-bold text-foreground">{formatBRL(o.total)}</span></span>
+                      <span>{o.items.reduce((s, i) => s + i.quantity, 0)} itens · <span className="font-bold text-foreground">{formatBRL(o.total)}</span></span>
                     </div>
                   </motion.button>
                 );
@@ -94,17 +90,17 @@ function ManagePage() {
 
           {selected && (
             <motion.div key={selected.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-              className="bg-card rounded-3xl shadow-card border p-6 md:p-8 lg:max-h-[calc(100vh-220px)] overflow-y-auto">
+              className="bg-card rounded-3xl shadow-card border p-6 md:p-8 lg:max-h-[calc(100vh-260px)] overflow-y-auto">
               <div className="flex items-start justify-between flex-wrap gap-4 mb-6">
                 <div>
-                  <p className="text-muted-foreground text-sm font-semibold">Order</p>
+                  <p className="text-muted-foreground text-sm font-semibold">Pedido</p>
                   <h2 className="text-4xl font-black">#{selected.number}</h2>
-                  <p className="text-muted-foreground mt-1">{selected.customerName} · {new Date(selected.createdAt).toLocaleTimeString()}</p>
+                  <p className="text-muted-foreground mt-1">{selected.customerName} · {formatTime(selected.createdAt)}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Total</p>
                   <p className="text-3xl font-black text-primary">{formatBRL(selected.total)}</p>
-                  <p className="text-xs font-semibold text-muted-foreground mt-1">{selected.paymentMethod.toUpperCase()}</p>
+                  <p className="text-xs font-semibold text-muted-foreground mt-1">{paymentLabel(selected.paymentMethod)}</p>
                 </div>
               </div>
 
@@ -129,11 +125,11 @@ function ManagePage() {
               {selected.status !== "finished" ? (
                 <button onClick={() => setConfirmFinish(true)}
                   className="w-full bg-status-finished text-white font-bold py-4 rounded-xl shadow-elegant hover:scale-[1.01] transition-transform flex items-center justify-center gap-2">
-                  <CheckCircle2 className="w-5 h-5" /> Order Assembled
+                  <CheckCircle2 className="w-5 h-5" /> Pedido Montado
                 </button>
               ) : (
                 <div className="w-full bg-status-finished/15 text-status-finished font-bold py-4 rounded-xl flex items-center justify-center gap-2">
-                  <CheckCircle2 className="w-5 h-5" /> Finished at {selected.finishedAt && new Date(selected.finishedAt).toLocaleTimeString()}
+                  <CheckCircle2 className="w-5 h-5" /> Finalizado às {selected.finishedAt && formatTime(selected.finishedAt)}
                 </div>
               )}
             </motion.div>
@@ -150,11 +146,11 @@ function ManagePage() {
               <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-status-finished/15 flex items-center justify-center">
                 <CheckCircle2 className="w-8 h-8 text-status-finished" />
               </div>
-              <h3 className="text-xl font-black mb-2">Finalize order #{selected.number}?</h3>
-              <p className="text-muted-foreground text-sm mb-5">It will be marked Finished and shown as Ready on the display panel.</p>
+              <h3 className="text-xl font-black mb-2">Finalizar pedido #{selected.number}?</h3>
+              <p className="text-muted-foreground text-sm mb-5">Ele será marcado como Finalizado e exibido como Pronto no painel público.</p>
               <div className="flex gap-3">
-                <button onClick={() => setConfirmFinish(false)} className="flex-1 py-3 rounded-xl border-2 font-bold hover:bg-muted">Cancel</button>
-                <button onClick={handleFinish} className="flex-1 py-3 rounded-xl bg-status-finished text-white font-bold">Confirm</button>
+                <button onClick={() => setConfirmFinish(false)} className="flex-1 py-3 rounded-xl border-2 font-bold hover:bg-muted">Cancelar</button>
+                <button onClick={handleFinish} className="flex-1 py-3 rounded-xl bg-status-finished text-white font-bold">Confirmar</button>
               </div>
             </motion.div>
           </motion.div>
@@ -167,4 +163,8 @@ function ManagePage() {
 function fmtElapsed(s: number) {
   const m = Math.floor(s / 60); const sec = s % 60;
   return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+}
+
+function paymentLabel(p: string) {
+  return p === "pix" ? "PIX" : p === "cash" ? "Dinheiro" : "Pendente";
 }
