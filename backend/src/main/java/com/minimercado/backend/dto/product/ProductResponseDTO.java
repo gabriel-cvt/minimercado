@@ -1,9 +1,10 @@
 package com.minimercado.backend.dto.product;
 
-import java.util.UUID;
-
 public record ProductResponseDTO(
-    UUID id,
+    Long id,
     String name,
-    Double price
+    Double price,
+    String urlImage,
+    Boolean requiresKitchenPreparation,
+    Integer stockQuantity
 ) {}

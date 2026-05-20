@@ -5,8 +5,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.util.UUID;
-
 @Entity
 @Table(name = "products")
 @Getter @Setter
@@ -14,28 +12,61 @@ import java.util.UUID;
 public class Product {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @Column(nullable = false)
     private String name;
 
-    private String description;
-
     @Column(nullable = false)
     private Double price;
 
-    private Integer stockQuantity;
+    private String urlImage;
 
-    private String category;
+    @Column(nullable = false)
+    private Boolean requiresKitchenPreparation = true;
+
+    @Column(nullable = false)
+    private Integer stockQuantity;
 
     @ManyToOne
     @JoinColumn(name = "order_id")
     private Order order;
 
-    public Product(String name, Double price, Integer stockQuantity) {
+    public Product(String name, Double price) {
         this.name = name;
         this.price = price;
+    }
+
+    public Product(String name, Double price, String urlImage, Boolean requiresKitchenPreparation, Integer stockQuantity) {
+        this.name = name;
+        this.price = price;
+        this.urlImage = urlImage;
+        this.requiresKitchenPreparation = requiresKitchenPreparation;
         this.stockQuantity = stockQuantity;
+    }
+
+    public boolean requiresKitchenPreparation() {
+        return Boolean.TRUE.equals(this.requiresKitchenPreparation);
+    }
+
+    public void decreaseStock(Integer quantity) {
+        if (quantity == null || quantity <= 0) {
+            throw new IllegalArgumentException("A quantidade deve ser maior que zero");
+        }
+
+        if (this.stockQuantity < quantity) {
+            throw new IllegalStateException("Estoque insuficiente para o produto " + this.name);
+        }
+
+        this.stockQuantity -= quantity;
+    }
+
+    public void increaseStock(Integer quantity) {
+        if (quantity == null || quantity <= 0) {
+            throw new IllegalArgumentException("A quantidade deve ser maior que zero");
+        }
+
+        this.stockQuantity += quantity;
     }
 }
