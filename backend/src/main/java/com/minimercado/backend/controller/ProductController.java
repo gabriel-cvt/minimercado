@@ -1,7 +1,9 @@
 package com.minimercado.backend.controller;
 
 import com.minimercado.backend.dto.product.ProductPostDTO;
+import com.minimercado.backend.dto.product.ProductPutDTO;
 import com.minimercado.backend.dto.product.ProductResponseDTO;
+import com.minimercado.backend.dto.product.ProductStockUpdateDTO;
 import com.minimercado.backend.service.product.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -34,19 +36,30 @@ public class ProductController {
 
     @PostMapping(API_PRODUCT)
     public ResponseEntity<ProductResponseDTO> create(@RequestBody @Valid ProductPostDTO data) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(productService.create(data));
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(productService.create(data));
     }
 
     @PutMapping(API_PRODUCT_ID)
     public ResponseEntity<ProductResponseDTO> update(
             @PathVariable Long id,
-            @RequestBody @Valid ProductPostDTO data) {
+            @RequestBody @Valid ProductPutDTO data) {
         return ResponseEntity.ok(productService.update(id, data));
+    }
+
+    @PatchMapping(API_PRODUCT_STOCK)
+    public ResponseEntity<ProductResponseDTO> updateStock(
+            @PathVariable Long id,
+            @RequestBody @Valid ProductStockUpdateDTO data) {
+        return ResponseEntity.ok(productService.updateStock(id, data.quantityChange()));
     }
 
     @DeleteMapping(API_PRODUCT_ID)
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         productService.delete(id);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity
+                .noContent()
+                .build();
     }
 }

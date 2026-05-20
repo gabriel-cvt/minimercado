@@ -2,6 +2,8 @@ package com.minimercado.backend.dto.product;
 
 public record ProductPutDTO(
         String name,
-        Double price
+        Double price,
+        String urlImage,
+        Boolean requiresKitchenPreparation
 ) {
 }

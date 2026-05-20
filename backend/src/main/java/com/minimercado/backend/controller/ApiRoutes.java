@@ -17,6 +17,7 @@ public class ApiRoutes {
     // Adicione em ApiRoutes.java
     public static final String API_PRODUCT = API + "/products";
     public static final String API_PRODUCT_ID = API_PRODUCT + "/{id}";
+    public static final String API_PRODUCT_STOCK = API_PRODUCT_ID + "/stock";
 
     public static final String API_CLIENT = API + "/clients";
     public static final String API_CLIENT_GET_CLIENT_BY_CPF = API_CLIENT + "/cpf/{cpf}";

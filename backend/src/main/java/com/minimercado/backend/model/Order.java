@@ -1,6 +1,7 @@
 package com.minimercado.backend.model;
 
 import com.minimercado.backend.enums.OrderStatus;
+import com.minimercado.backend.enums.PaymentMethod;
 import com.minimercado.backend.enums.PaymentStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -30,6 +31,9 @@ public class Order {
     @Enumerated(EnumType.STRING)
     private PaymentStatus paymentStatus = PaymentStatus.PENDING;
 
+    @Enumerated(EnumType.STRING)
+    private PaymentMethod paymentMethod;
+
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
     private List<OrderItem> items;
 
@@ -38,6 +42,7 @@ public class Order {
     private Client client;
 
     private Double totalValue;
+
 
     public void calculateTotal() {
         this.totalValue = this.items

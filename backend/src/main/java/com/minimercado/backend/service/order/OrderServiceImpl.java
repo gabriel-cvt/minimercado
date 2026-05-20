@@ -27,6 +27,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 
 @Service
@@ -59,6 +61,8 @@ public class OrderServiceImpl implements OrderService{
         order.setClient(client);
 
         order.setItems(buildOrderItems(data.items(), order));
+        decreaseStock(order.getItems());
+        order.setPaymentMethod(data.paymentMethod());
         order.calculateTotal();
         
         Order savedOrder = orderRepository.save(order);
@@ -82,13 +86,20 @@ public class OrderServiceImpl implements OrderService{
             order.setClient(client);
         }
 
+        if (data.paymentMethod() != null) {
+            order.setPaymentMethod(data.paymentMethod());
+        }
+
+        boolean hadKitchenItems = hasKitchenItems(order);
+        applyStockChangesForUpdate(order, data.items());
+
         order.getItems().clear();
         order.getItems().addAll(buildOrderItems(data.items(), order));
         order.calculateTotal();
 
         Order savedOrder = orderRepository.save(order);
 
-        publishKitchenEvent(savedOrder, OrderKitchenEventType.UPDATED);
+        publishKitchenEvent(savedOrder, OrderKitchenEventType.UPDATED, hadKitchenItems);
         return mapper.toResponse(savedOrder);
     }
 
@@ -105,6 +116,7 @@ public class OrderServiceImpl implements OrderService{
             throw new IllegalStateException();
         }
 
+        increaseStock(order.getItems());
         order.setStatus(OrderStatus.CANCELLED);
         order.setPaymentStatus(PaymentStatus.CANCELLED);
         orderRepository.save(order);
@@ -175,29 +187,100 @@ public class OrderServiceImpl implements OrderService{
     private List<OrderItem> buildOrderItems(List<OrderItemRequestDTO> items, Order order) {
         return items.stream()
                 .map(itemDto -> {
+                    validateOrderItemQuantity(itemDto.quantity());
                     Product product = findProductById(itemDto.productId());
                     return new OrderItem(product, order, itemDto.quantity());
                 })
                 .toList();
     }
 
-    private void publishKitchenEvent(Order order, OrderKitchenEventType eventType){
+    private void decreaseStock(List<OrderItem> items) {
+        items.forEach(item -> item.getProduct().decreaseStock(item.getQuantity()));
+    }
+
+    private void increaseStock(List<OrderItem> items) {
+        items.forEach(item -> item.getProduct().increaseStock(item.getQuantity()));
+    }
+
+    private void applyStockChangesForUpdate(Order order, List<OrderItemRequestDTO> requestedItems) {
+        Map<Long, Integer> currentQuantities = groupCurrentItemQuantities(order.getItems());
+        Map<Long, Integer> requestedQuantities = groupRequestedItemQuantities(requestedItems);
+
+        requestedQuantities.forEach((productId, requestedQuantity) -> {
+            int currentQuantity = currentQuantities.getOrDefault(productId, 0);
+            int quantityDifference = requestedQuantity - currentQuantity;
+
+            if (quantityDifference > 0) {
+                findProductById(productId).decreaseStock(quantityDifference);
+            }
+
+            if (quantityDifference < 0) {
+                findProductById(productId).increaseStock(Math.abs(quantityDifference));
+            }
+        });
+
+        currentQuantities.forEach((productId, currentQuantity) -> {
+            if (!requestedQuantities.containsKey(productId)) {
+                findProductById(productId).increaseStock(currentQuantity);
+            }
+        });
+    }
+
+    private Map<Long, Integer> groupCurrentItemQuantities(List<OrderItem> items) {
+        return items.stream()
+                .collect(Collectors.groupingBy(
+                        item -> item.getProduct().getId(),
+                        Collectors.summingInt(OrderItem::getQuantity)
+                ));
+    }
+
+    private Map<Long, Integer> groupRequestedItemQuantities(List<OrderItemRequestDTO> items) {
+        return items.stream()
+                .peek(item -> validateOrderItemQuantity(item.quantity()))
+                .collect(Collectors.groupingBy(
+                        OrderItemRequestDTO::productId,
+                        Collectors.summingInt(OrderItemRequestDTO::quantity)
+                ));
+    }
+
+    private void validateOrderItemQuantity(Integer quantity) {
+        if (quantity == null || quantity <= 0) {
+            throw new IllegalArgumentException("A quantidade do item deve ser maior que zero");
+        }
+    }
+
+    private void publishKitchenEvent(Order order, OrderKitchenEventType eventType) {
+        publishKitchenEvent(order, eventType, false);
+    }
+
+    private void publishKitchenEvent(Order order, OrderKitchenEventType eventType, boolean forcePublish) {
+        List<OrderKitchenItemDTO> kitchenItems = buildKitchenItems(order);
+        if (!forcePublish && kitchenItems.isEmpty()) {
+            return;
+        }
+
         eventPublisher.publishEvent(
                 new OrderKitchenEvent(
                         order.getId(),
                         eventType,
-                        buildKitchenItems(order)
+                        kitchenItems
                 )
         );
     }
 
     private List<OrderKitchenItemDTO> buildKitchenItems(Order order) {
         return order.getItems().stream()
+                .filter(item -> item.getProduct().requiresKitchenPreparation())
                 .map(item -> new OrderKitchenItemDTO(
                         item.getProduct().getId(),
                         item.getProduct().getName(),
                         item.getQuantity()
                 ))
                 .toList();
+    }
+
+    private boolean hasKitchenItems(Order order) {
+        return order.getItems().stream()
+                .anyMatch(item -> item.getProduct().requiresKitchenPreparation());
     }
 }

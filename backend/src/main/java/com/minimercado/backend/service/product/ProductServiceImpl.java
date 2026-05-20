@@ -1,6 +1,7 @@
 package com.minimercado.backend.service.product;
 
 import com.minimercado.backend.dto.product.ProductPostDTO;
+import com.minimercado.backend.dto.product.ProductPutDTO;
 import com.minimercado.backend.dto.product.ProductResponseDTO;
 import com.minimercado.backend.mapper.ProductMapper;
 import com.minimercado.backend.model.Product;
@@ -12,8 +13,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Optional;
-
 @Service
 @RequiredArgsConstructor
 public class ProductServiceImpl implements ProductService {
@@ -24,9 +23,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public ProductResponseDTO getById(Long id) {
-        return productRepository.findById(id)
-                .map(productMapper::toResponse)
-                .orElseThrow(EntityNotFoundException::new);
+        return productMapper.toResponse(findProductById(id));
     }
 
     @Override
@@ -39,22 +36,17 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public ProductResponseDTO create(ProductPostDTO data) {
-        Product product = new Product(data.name(), data.price());
-
-        // Validações de negócio nessa parte
-
+        Product product = buildProduct(data);
         Product savedProduct = productRepository.save(product);
         return productMapper.toResponse(savedProduct);
     }
 
     @Override
     @Transactional
-    public ProductResponseDTO update(Long id, ProductPostDTO data) {
-        Product product = productRepository.findById(id)
-                .orElseThrow(EntityNotFoundException::new);
+    public ProductResponseDTO update(Long id, ProductPutDTO data) {
+        Product product = findProductById(id);
 
-        Optional.ofNullable(data.name()).ifPresent(product::setName);
-        Optional.ofNullable(data.price()).ifPresent(product::setPrice);
+        updateProductFields(product, data);
 
         return productMapper.toResponse(productRepository.save(product));
     }
@@ -70,7 +62,66 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    public void updateStock(Long id, Integer quantity) {
-        // Implementar atualização de estoque caso vá existir
+    public ProductResponseDTO  updateStock(Long id, Integer quantityChange) {
+        Product product = findProductById(id);
+
+        applyStockChange(product, quantityChange);
+
+        return productMapper.toResponse(productRepository.save(product));
+    }
+
+    private Product findProductById(Long id) {
+        return productRepository.findById(id)
+                .orElseThrow(EntityNotFoundException::new);
+    }
+
+    private Product buildProduct(ProductPostDTO data) {
+        validateStockQuantity(data.stockQuantity());
+
+        return new Product(
+                data.name(),
+                data.price(),
+                data.urlImage(),
+                kitchenPreparationOrDefault(data.requiresKitchenPreparation()),
+                data.stockQuantity()
+        );
+    }
+
+    private void updateProductFields(Product product, ProductPutDTO data) {
+        if (data.name() != null) {
+            product.setName(data.name());
+        }
+
+        if (data.price() != null) {
+            product.setPrice(data.price());
+        }
+
+        if (data.urlImage() != null) {
+            product.setUrlImage(data.urlImage());
+        }
+
+        if (data.requiresKitchenPreparation() != null) {
+            product.setRequiresKitchenPreparation(data.requiresKitchenPreparation());
+        }
+    }
+
+    private void applyStockChange(Product product, Integer quantityChange) {
+        if (quantityChange == null || quantityChange == 0) {
+            throw new IllegalArgumentException("A alteracao de estoque deve ser diferente de zero");
+        }
+
+        int updatedStock = product.getStockQuantity() + quantityChange;
+        validateStockQuantity(updatedStock);
+        product.setStockQuantity(updatedStock);
+    }
+
+    private void validateStockQuantity(Integer stockQuantity) {
+        if (stockQuantity == null || stockQuantity < 0) {
+            throw new IllegalArgumentException("A quantidade em estoque nao pode ser negativa");
+        }
+    }
+
+    private Boolean kitchenPreparationOrDefault(Boolean requiresKitchenPreparation) {
+        return requiresKitchenPreparation != null ? requiresKitchenPreparation : true;
     }
 }
