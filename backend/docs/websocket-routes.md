@@ -35,6 +35,74 @@ stompClient.connect({}, () => {
 
 ## Tópicos disponíveis
 
+### `/topic/orders`
+
+Notifica mudanças gerais de pedido para telas operacionais.
+
+Payload:
+
+```json
+{
+  "orderId": 1,
+  "type": "ORDER_STATUS_CHANGED",
+  "status": "READY_FOR_PICKUP",
+  "paymentStatus": "PENDING",
+  "fromStatus": "PENDING",
+  "toStatus": "READY_FOR_PICKUP"
+}
+```
+
+Campos:
+
+- `orderId`: identificador do pedido.
+- `type`: tipo do evento. Valores atuais: `ORDER_CREATED`, `ORDER_UPDATED`, `ORDER_STATUS_CHANGED`, `ORDER_PAID`, `ORDER_CANCELLED`.
+- `status`: status atual do pedido.
+- `paymentStatus`: status atual do pagamento.
+- `fromStatus`: status anterior, quando o evento representa mudança de status.
+- `toStatus`: novo status, quando o evento representa mudança de status.
+
+Quando é publicado:
+
+- Ao criar um pedido.
+- Ao editar um pedido.
+- Ao cancelar um pedido.
+- Ao marcar um pedido como pago.
+- Ao marcar um pedido como pronto para retirada.
+- Ao finalizar um pedido.
+
+Origem no código:
+
+- Publicação WebSocket: `WebSocketOrderRealtimeNotifier`
+- Evento de domínio: `OrderRealtimeEvent`
+- Gatilhos: `OrderServiceImpl.create`, `OrderServiceImpl.edit`, `OrderServiceImpl.cancel`, `OrderServiceImpl.markAsPaid`, `OrderServiceImpl.markAsReady`, `OrderServiceImpl.finish`
+
+### `/topic/orders/public`
+
+Notifica mudanças de pedido para telas públicas, como painel de retirada.
+
+Payload:
+
+```json
+{
+  "orderId": 1,
+  "type": "ORDER_STATUS_CHANGED",
+  "status": "READY_FOR_PICKUP",
+  "paymentStatus": "PENDING",
+  "fromStatus": "PENDING",
+  "toStatus": "READY_FOR_PICKUP"
+}
+```
+
+Quando é publicado:
+
+- Recebe os mesmos eventos de `/topic/orders`, exceto `ORDER_PAID`.
+- O objetivo é evitar expor no painel público eventos puramente financeiros.
+
+Origem no código:
+
+- Publicação WebSocket: `WebSocketOrderRealtimeNotifier`
+- Evento de domínio: `OrderRealtimeEvent`
+
 ### `/topic/kitchen/orders`
 
 Notifica a cozinha sobre pedidos que possuem itens que exigem preparo.
@@ -124,12 +192,11 @@ Observações:
 - A mensagem é enviada após o commit da transação.
 - O pedido não pode estar cancelado nem finalizado.
 
-## Rotas sem publicação WebSocket
+## Rotas sem publicação WebSocket direta
 
-As seguintes ações de pedido não publicam eventos WebSocket no código atual:
+As seguintes consultas não publicam eventos WebSocket no código atual:
 
-- `PATCH /api/orders/{id}/pay`: marca o pedido como pago, mas não emite evento WebSocket.
-- `PATCH /api/orders/{id}/finish`: finaliza o pedido, mas não emite evento WebSocket.
+- `GET /api/orders`: consulta pedidos, sem evento WebSocket.
 - `GET /api/orders/{id}`: consulta pedido, sem evento WebSocket.
 - `GET /api/orders/client/{cpf}`: consulta pedidos por cliente, sem evento WebSocket.
 
@@ -138,7 +205,8 @@ As seguintes ações de pedido não publicam eventos WebSocket no código atual:
 | Tipo | Rota/Destino | Direção | Função |
 | --- | --- | --- | --- |
 | Conexão | `/ws` | Cliente -> Backend | Abre a conexão STOMP/SockJS. |
+| Tópico | `/topic/orders` | Backend -> Cliente | Envia eventos gerais de pedidos para operação. |
+| Tópico | `/topic/orders/public` | Backend -> Cliente | Envia eventos de pedidos adequados para painel público. |
 | Tópico | `/topic/kitchen/orders` | Backend -> Cliente | Envia eventos de pedidos para a cozinha. |
 | Tópico | `/topic/pickup/orders` | Backend -> Cliente | Envia eventos de pedidos prontos para retirada. |
 | Prefixo | `/app` | Cliente -> Backend | Prefixo configurado, mas sem handlers implementados atualmente. |
-

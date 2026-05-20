@@ -7,11 +7,16 @@ import com.minimercado.backend.mapper.ProductMapper;
 import com.minimercado.backend.model.Product;
 import com.minimercado.backend.repository.ProductRepository;
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -28,8 +33,12 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<ProductResponseDTO> getAll(Pageable pageable) {
-        return productRepository.findAll(pageable)
+    public Page<ProductResponseDTO> getAll(
+            Pageable pageable,
+            String name,
+            Boolean requiresKitchenPreparation,
+            Boolean inStock) {
+        return productRepository.findAll(buildSpecification(name, requiresKitchenPreparation, inStock), pageable)
                 .map(productMapper::toResponse);
     }
 
@@ -123,5 +132,38 @@ public class ProductServiceImpl implements ProductService {
 
     private Boolean kitchenPreparationOrDefault(Boolean requiresKitchenPreparation) {
         return requiresKitchenPreparation != null ? requiresKitchenPreparation : true;
+    }
+
+    private Specification<Product> buildSpecification(
+            String name,
+            Boolean requiresKitchenPreparation,
+            Boolean inStock) {
+        return (root, query, criteriaBuilder) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            if (name != null && !name.isBlank()) {
+                predicates.add(criteriaBuilder.like(
+                        criteriaBuilder.lower(root.get("name")),
+                        "%" + name.toLowerCase() + "%"
+                ));
+            }
+
+            if (requiresKitchenPreparation != null) {
+                predicates.add(criteriaBuilder.equal(
+                        root.get("requiresKitchenPreparation"),
+                        requiresKitchenPreparation
+                ));
+            }
+
+            if (inStock != null) {
+                if (inStock) {
+                    predicates.add(criteriaBuilder.greaterThan(root.<Integer>get("stockQuantity"), 0));
+                } else {
+                    predicates.add(criteriaBuilder.equal(root.<Integer>get("stockQuantity"), 0));
+                }
+            }
+
+            return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
+        };
     }
 }

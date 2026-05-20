@@ -25,8 +25,11 @@ public class ProductController {
 
     @GetMapping(API_PRODUCT)
     public ResponseEntity<Page<ProductResponseDTO>> listAll(
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) Boolean requiresKitchenPreparation,
+            @RequestParam(required = false) Boolean inStock,
             @PageableDefault(size = 20, sort = "name") Pageable pageable) {
-        return ResponseEntity.ok(productService.getAll(pageable));
+        return ResponseEntity.ok(productService.getAll(pageable, name, requiresKitchenPreparation, inStock));
     }
 
     @GetMapping(API_PRODUCT_ID)

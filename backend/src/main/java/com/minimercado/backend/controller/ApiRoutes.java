@@ -21,4 +21,7 @@ public class ApiRoutes {
 
     public static final String API_CLIENT = API + "/clients";
     public static final String API_CLIENT_GET_CLIENT_BY_CPF = API_CLIENT + "/cpf/{cpf}";
+
+    public static final String API_DASHBOARD = API + "/dashboard";
+    public static final String API_DASHBOARD_SUMMARY = API_DASHBOARD + "/summary";
 }

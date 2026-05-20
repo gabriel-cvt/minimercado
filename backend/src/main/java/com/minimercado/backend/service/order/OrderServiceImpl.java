@@ -7,8 +7,11 @@ import com.minimercado.backend.dto.order.OrderPutDTO;
 import com.minimercado.backend.dto.order.OrderResponseDTO;
 import com.minimercado.backend.dto.orderItem.OrderItemRequestDTO;
 import com.minimercado.backend.dto.orderPickup.OrderReadyForPickupEvent;
+import com.minimercado.backend.dto.orderRealtime.OrderRealtimeEvent;
 import com.minimercado.backend.enums.OrderKitchenEventType;
+import com.minimercado.backend.enums.OrderRealtimeEventType;
 import com.minimercado.backend.enums.OrderStatus;
+import com.minimercado.backend.enums.PaymentMethod;
 import com.minimercado.backend.enums.PaymentStatus;
 import com.minimercado.backend.mapper.OrderMapper;
 import com.minimercado.backend.model.Client;
@@ -19,13 +22,18 @@ import com.minimercado.backend.repository.OrderRepository;
 import com.minimercado.backend.repository.ProductRepository;
 import com.minimercado.backend.service.client.ClientService;
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.Predicate;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -44,6 +52,22 @@ public class OrderServiceImpl implements OrderService{
     @Override
     public OrderResponseDTO get(Long id){
         return mapper.toResponse(findOrderById(id));
+    }
+
+    @Override
+    public Page<OrderResponseDTO> list(
+            OrderStatus status,
+            PaymentStatus paymentStatus,
+            String clientCpf,
+            LocalDateTime from,
+            LocalDateTime to,
+            Boolean requiresKitchenPreparation,
+            Pageable pageable) {
+        return orderRepository.findAll(
+                        buildSpecification(status, paymentStatus, clientCpf, from, to, requiresKitchenPreparation),
+                        pageable
+                )
+                .map(mapper::toResponse);
     }
 
     @Override
@@ -68,6 +92,7 @@ public class OrderServiceImpl implements OrderService{
         Order savedOrder = orderRepository.save(order);
 
         publishKitchenEvent(savedOrder, OrderKitchenEventType.CREATED);
+        publishRealtimeEvent(savedOrder, OrderRealtimeEventType.ORDER_CREATED, null, savedOrder.getStatus());
         return mapper.toResponse(savedOrder);
     }
 
@@ -100,33 +125,37 @@ public class OrderServiceImpl implements OrderService{
         Order savedOrder = orderRepository.save(order);
 
         publishKitchenEvent(savedOrder, OrderKitchenEventType.UPDATED, hadKitchenItems);
+        publishRealtimeEvent(savedOrder, OrderRealtimeEventType.ORDER_UPDATED, null, null);
         return mapper.toResponse(savedOrder);
     }
 
     @Override
     @Transactional
-    public void cancel(Long id) {
+    public OrderResponseDTO cancel(Long id) {
         Order order = findOrderById(id);
 
         if (order.getStatus() == OrderStatus.CANCELLED) {
-            return;
+            return mapper.toResponse(order);
         }
 
         if (order.getStatus() == OrderStatus.FINISHED) {
             throw new IllegalStateException();
         }
 
+        OrderStatus previousStatus = order.getStatus();
         increaseStock(order.getItems());
         order.setStatus(OrderStatus.CANCELLED);
         order.setPaymentStatus(PaymentStatus.CANCELLED);
-        orderRepository.save(order);
+        Order savedOrder = orderRepository.save(order);
 
-        publishKitchenEvent(order, OrderKitchenEventType.CANCELLED);
+        publishKitchenEvent(savedOrder, OrderKitchenEventType.CANCELLED);
+        publishRealtimeEvent(savedOrder, OrderRealtimeEventType.ORDER_CANCELLED, previousStatus, savedOrder.getStatus());
+        return mapper.toResponse(savedOrder);
     }
 
     @Override
     @Transactional
-    public void markAsReady(Long id) {
+    public OrderResponseDTO markAsReady(Long id) {
         Order order = findOrderById(id);
 
         if (order.getStatus() == OrderStatus.CANCELLED) {
@@ -137,15 +166,19 @@ public class OrderServiceImpl implements OrderService{
             throw new IllegalStateException();
         }
 
+        OrderStatus previousStatus = order.getStatus();
         order.setStatus(OrderStatus.READY_FOR_PICKUP);
-        orderRepository.save(order);
+        Order savedOrder = orderRepository.save(order);
 
         // Evento para avisar que o pedido está pronto para coleta
-        eventPublisher.publishEvent(new OrderReadyForPickupEvent(order.getId()));
+        eventPublisher.publishEvent(new OrderReadyForPickupEvent(savedOrder.getId()));
+        publishRealtimeEvent(savedOrder, OrderRealtimeEventType.ORDER_STATUS_CHANGED, previousStatus, savedOrder.getStatus());
+        return mapper.toResponse(savedOrder);
     }
 
+    @Override
     @Transactional
-    public void markAsPaid(Long id) {
+    public OrderResponseDTO markAsPaid(Long id, PaymentMethod paymentMethod) {
         Order order = findOrderById(id);
 
         if (order.getStatus() == OrderStatus.CANCELLED) {
@@ -153,25 +186,35 @@ public class OrderServiceImpl implements OrderService{
         }
 
         if (order.getPaymentStatus() == PaymentStatus.PAID) {
-            return;
+            return mapper.toResponse(order);
+        }
+
+        if (paymentMethod != null) {
+            order.setPaymentMethod(paymentMethod);
         }
 
         order.setPaymentStatus(PaymentStatus.PAID);
 
-        orderRepository.save(order);
+        Order savedOrder = orderRepository.save(order);
+        publishRealtimeEvent(savedOrder, OrderRealtimeEventType.ORDER_PAID, null, null);
+        return mapper.toResponse(savedOrder);
     }
 
 
     @Override
-    public void finish(Long id) {
+    @Transactional
+    public OrderResponseDTO finish(Long id) {
         Order order = findOrderById(id);
 
         if (order.getStatus() != OrderStatus.READY_FOR_PICKUP) {
             throw new IllegalStateException();
         }
 
+        OrderStatus previousStatus = order.getStatus();
         order.setStatus(OrderStatus.FINISHED);
-        orderRepository.save(order);
+        Order savedOrder = orderRepository.save(order);
+        publishRealtimeEvent(savedOrder, OrderRealtimeEventType.ORDER_STATUS_CHANGED, previousStatus, savedOrder.getStatus());
+        return mapper.toResponse(savedOrder);
     }
 
     private Order findOrderById(Long id) {
@@ -282,5 +325,64 @@ public class OrderServiceImpl implements OrderService{
     private boolean hasKitchenItems(Order order) {
         return order.getItems().stream()
                 .anyMatch(item -> item.getProduct().requiresKitchenPreparation());
+    }
+
+    private void publishRealtimeEvent(
+            Order order,
+            OrderRealtimeEventType eventType,
+            OrderStatus fromStatus,
+            OrderStatus toStatus) {
+        eventPublisher.publishEvent(new OrderRealtimeEvent(
+                order.getId(),
+                eventType,
+                order.getStatus(),
+                order.getPaymentStatus(),
+                fromStatus,
+                toStatus
+        ));
+    }
+
+    private Specification<Order> buildSpecification(
+            OrderStatus status,
+            PaymentStatus paymentStatus,
+            String clientCpf,
+            LocalDateTime from,
+            LocalDateTime to,
+            Boolean requiresKitchenPreparation) {
+        return (root, query, criteriaBuilder) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            if (status != null) {
+                predicates.add(criteriaBuilder.equal(root.get("status"), status));
+            }
+
+            if (paymentStatus != null) {
+                predicates.add(criteriaBuilder.equal(root.get("paymentStatus"), paymentStatus));
+            }
+
+            if (clientCpf != null && !clientCpf.isBlank()) {
+                predicates.add(criteriaBuilder.equal(root.get("client").get("cpf"), clientCpf));
+            }
+
+            if (from != null) {
+                predicates.add(criteriaBuilder.greaterThanOrEqualTo(root.<LocalDateTime>get("orderTime"), from));
+            }
+
+            if (to != null) {
+                predicates.add(criteriaBuilder.lessThanOrEqualTo(root.<LocalDateTime>get("orderTime"), to));
+            }
+
+            if (requiresKitchenPreparation != null) {
+                query.distinct(true);
+                Join<Order, OrderItem> items = root.join("items");
+                Join<OrderItem, Product> product = items.join("product");
+                predicates.add(criteriaBuilder.equal(
+                        product.get("requiresKitchenPreparation"),
+                        requiresKitchenPreparation
+                ));
+            }
+
+            return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
+        };
     }
 }
