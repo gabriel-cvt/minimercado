@@ -5,6 +5,5 @@ public record ProductResponseDTO(
     String name,
     Double price,
     String urlImage,
-    Boolean requiresKitchenPreparation,
     Integer stockQuantity
 ) {}

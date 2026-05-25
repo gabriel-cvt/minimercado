@@ -1,11 +1,41 @@
 package com.minimercado.backend.mapper;
 
+import com.minimercado.backend.dto.orderItem.OrderItemResponseDTO;
 import com.minimercado.backend.dto.order.OrderResponseDTO;
 import com.minimercado.backend.model.Order;
-import org.mapstruct.Mapper;
+import org.springframework.stereotype.Component;
 
-@Mapper(componentModel = "spring", uses = {OrderItemMapper.class, ClientMapper.class})
-public interface OrderMapper {
+import java.util.List;
 
-    OrderResponseDTO toResponse(Order order);
+@Component
+public class OrderMapper {
+
+    private final OrderItemMapper orderItemMapper;
+    private final ClientMapper clientMapper;
+
+    public OrderMapper(OrderItemMapper orderItemMapper, ClientMapper clientMapper) {
+        this.orderItemMapper = orderItemMapper;
+        this.clientMapper = clientMapper;
+    }
+
+    public OrderResponseDTO toResponse(Order order) {
+        if (order == null) {
+            return null;
+        }
+
+        List<OrderItemResponseDTO> items = order.getItems() == null
+                ? null
+                : order.getItems().stream().map(orderItemMapper::toResponse).toList();
+
+        return new OrderResponseDTO(
+                order.getId(),
+                order.getOrderTime(),
+                order.getStatus(),
+                order.getPaymentStatus(),
+                items,
+                clientMapper.toResponse(order.getClient()),
+                order.getPaymentMethod(),
+                order.getTotalValue()
+        );
+    }
 }

@@ -30,7 +30,7 @@ Objetivo: permitir que o frontend deixe de inferir status e consiga listar/opera
 Objetivo: alimentar `/painel` e fluxos de preparo sem mocks.
 
 1. Reutilizar `GET /api/orders` com filtros públicos ou criar aliases públicos somente se houver regra de exposição diferente.
-2. Definir se cozinha é apenas booleano (`requiresKitchenPreparation`) ou praça/categoria (`kitchen`).
+2. Aplicar a regra de domínio: todo produto passa pelo fluxo da cozinha, sem campo discriminador.
 3. Ajustar eventos WebSocket para mudanças de status visíveis no painel.
 
 ### Fase 3 — Dashboard e analytics
@@ -64,10 +64,10 @@ Objetivo: alimentar telas gerenciais.
 | P0 | `GET /api/orders/client/{cpf}` | Corrigir controller de `@PathVariable("id")` para `@PathVariable("cpf")`. | A rota existe, mas o bind do path variable está incoerente com `ApiRoutes`. |
 | P0 | `OrderResponseDTO` | Adicionar `status` e `paymentStatus`. | Frontend não deve inferir estado do pedido. |
 | P0 | `OrderResponseDTO` | Adicionar timestamps operacionais, pelo menos `readyAt` e `finishedAt` se o painel/dash medirem tempo. | Necessário para dashboard e performance; requer campos na entidade. |
-| P0 | `OrderItemResponseDTO` | Adicionar `productId` e `requiresKitchenPreparation`. | Permite edição, agrupamento visual e separação de itens de cozinha. |
-| P0 | `ProductResponseDTO` | Manter `requiresKitchenPreparation` e, se o domínio pedir praça, adicionar `kitchen`. | O frontend fala em `SANDUICHES`, `BEBIDAS`, `SOBREMESAS`, `GERAL`, mas o backend hoje só modela booleano. |
+| P0 | `OrderItemResponseDTO` | Adicionar `productId`. | Permite edição e agrupamento visual; todos os itens pertencem à cozinha. |
+| P0 | `ProductResponseDTO` | Não expor categoria ou flag de cozinha. | Todo produto segue o fluxo de preparo por regra de domínio. |
 | P0 | `POST /api/clients` | Tornar `name` obrigatório no DTO se a regra de negócio exige nome. | OpenAPI hoje mostra só `cpf` como obrigatório. |
-| P0 | `GET /api/products` | Adicionar filtros `name`, `requiresKitchenPreparation`/`kitchen`, `inStock`. | Melhora busca e cadastro de pedidos. |
+| P0 | `GET /api/products` | Adicionar filtros `name` e `inStock`. | Melhora busca e cadastro de pedidos. |
 | P1 | `PATCH /api/orders/{id}/pay` | Aceitar body opcional `{ "paymentMethod": "PIX" }`. | Permite pedido criado como `PENDING` ser pago depois informando método real. |
 | P1 | `POST /api/orders` e `PUT /api/orders/{id}` | Padronizar `clienteCpf` para `clientCpf`. | Consistência de contrato com o restante em inglês. Pode ser mudança breaking; fazer com cuidado. |
 | P1 | `PATCH /api/orders/{id}/ready`, `/finish`, `/cancel`, `/pay` | Considerar retornar `OrderResponseDTO` em vez de `204/void`. | Facilita atualização otimista no frontend sem novo `GET`. |
@@ -144,7 +144,7 @@ Eventos de produto/estoque só entram se o frontend precisar atualizar catálogo
 
 - Corrigir `GET /api/orders/client/{cpf}`.
 - Adicionar `status` e `paymentStatus` em `OrderResponseDTO`.
-- Adicionar `productId` e `requiresKitchenPreparation` em `OrderItemResponseDTO`.
+- Adicionar `productId` em `OrderItemResponseDTO`.
 - Criar `GET /api/orders` paginado com filtros básicos.
 - Ajustar documentação OpenAPI.
 
@@ -161,11 +161,9 @@ Eventos de produto/estoque só entram se o frontend precisar atualizar catálogo
 
 ### Etapa 3
 
-- Decidir modelagem de cozinha:
-  - opção simples: manter `requiresKitchenPreparation`;
-  - opção completa: adicionar enum `KitchenArea`.
-- Se usar `KitchenArea`, adicionar campo em `Product`, DTOs e `OrderItemResponseDTO`.
-- Só criar `GET /api/kitchens` se as áreas forem configuráveis pelo backend.
+- Aplicar a regra de domínio de cozinha única: todos os produtos são preparados na cozinha.
+- Não adicionar flag ou categoria de cozinha nos DTOs.
+- Só criar `GET /api/kitchens` se futuramente houver áreas configuráveis.
 
 ### Etapa 4
 
@@ -183,5 +181,4 @@ Eventos de produto/estoque só entram se o frontend precisar atualizar catálogo
 | Detalhamento de pedidos | `GET /api/orders`, `GET /api/orders/{id}`, patches de status/pagamento/cancelamento |
 | Dashboard | `GET /api/dashboard/summary` + `GET /api/orders?paymentStatus=PENDING`; demais analytics depois |
 | Painel público | `GET /api/orders?status=PENDING`, `GET /api/orders?status=READY_FOR_PICKUP`, `/topic/orders/public` |
-| Cozinha | `/topic/kitchen/orders` + `GET /api/orders?status=PENDING&requiresKitchenPreparation=true` se precisar reidratar estado |
-
+| Cozinha | `/topic/kitchen/orders` + `GET /api/orders?status=PENDING` se precisar reidratar estado |

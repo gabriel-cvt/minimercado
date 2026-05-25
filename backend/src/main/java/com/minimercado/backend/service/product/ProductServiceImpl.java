@@ -36,9 +36,8 @@ public class ProductServiceImpl implements ProductService {
     public Page<ProductResponseDTO> getAll(
             Pageable pageable,
             String name,
-            Boolean requiresKitchenPreparation,
             Boolean inStock) {
-        return productRepository.findAll(buildSpecification(name, requiresKitchenPreparation, inStock), pageable)
+        return productRepository.findAll(buildSpecification(name, inStock), pageable)
                 .map(productMapper::toResponse);
     }
 
@@ -91,7 +90,6 @@ public class ProductServiceImpl implements ProductService {
                 data.name(),
                 data.price(),
                 data.urlImage(),
-                kitchenPreparationOrDefault(data.requiresKitchenPreparation()),
                 data.stockQuantity()
         );
     }
@@ -109,9 +107,6 @@ public class ProductServiceImpl implements ProductService {
             product.setUrlImage(data.urlImage());
         }
 
-        if (data.requiresKitchenPreparation() != null) {
-            product.setRequiresKitchenPreparation(data.requiresKitchenPreparation());
-        }
     }
 
     private void applyStockChange(Product product, Integer quantityChange) {
@@ -130,13 +125,8 @@ public class ProductServiceImpl implements ProductService {
         }
     }
 
-    private Boolean kitchenPreparationOrDefault(Boolean requiresKitchenPreparation) {
-        return requiresKitchenPreparation != null ? requiresKitchenPreparation : true;
-    }
-
     private Specification<Product> buildSpecification(
             String name,
-            Boolean requiresKitchenPreparation,
             Boolean inStock) {
         return (root, query, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -145,13 +135,6 @@ public class ProductServiceImpl implements ProductService {
                 predicates.add(criteriaBuilder.like(
                         criteriaBuilder.lower(root.get("name")),
                         "%" + name.toLowerCase() + "%"
-                ));
-            }
-
-            if (requiresKitchenPreparation != null) {
-                predicates.add(criteriaBuilder.equal(
-                        root.get("requiresKitchenPreparation"),
-                        requiresKitchenPreparation
                 ));
             }
 

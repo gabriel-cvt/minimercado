@@ -10,7 +10,6 @@ import {
   RefreshCw,
   Signal,
   Soup,
-  Utensils,
   Wifi,
   WifiOff,
   XCircle,
@@ -24,7 +23,7 @@ import {
   type ApiOrder,
   type ApiOrderItem,
 } from "@/lib/api";
-import { formatBRL, formatTime } from "@/lib/store";
+import { formatBRL, formatTime } from "@/lib/format";
 import {
   useKitchenOrdersSocket,
   useOrdersSocket,
@@ -101,7 +100,7 @@ function KitchenPage() {
     setError(null);
     try {
       const page = await getKitchenPendingOrders();
-      setOrders(sortOrders(page.content.map(mapApiOrder).filter(Boolean) as KitchenQueueOrder[]));
+      setOrders(sortOrders(page.content.map(mapApiOrder)));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível carregar a fila da cozinha.");
     } finally {
@@ -127,7 +126,7 @@ function KitchenPage() {
       try {
         const order = await getOrder(orderId);
         const mapped = mapApiOrder(order);
-        if (!mapped || mapped.status !== "PENDING") {
+        if (mapped.status !== "PENDING") {
           removeOrder(orderId);
           return;
         }
@@ -242,7 +241,7 @@ function KitchenPage() {
                 </div>
                 <h1 className="text-3xl md:text-5xl font-black leading-tight">Fila da Cozinha</h1>
                 <p className="text-muted-foreground font-medium mt-1">
-                  Pedidos com preparo, sincronizados pelo WebSocket operacional.
+                  Todos os pedidos, sincronizados pelo WebSocket operacional.
                 </p>
               </div>
             </div>
@@ -433,13 +432,7 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function mapApiOrder(order: ApiOrder): KitchenQueueOrder | null {
-  const kitchenItems = order.items
-    .filter((item) => item.requiresKitchenPreparation)
-    .map(mapApiItem);
-
-  if (kitchenItems.length === 0) return null;
-
+function mapApiOrder(order: ApiOrder): KitchenQueueOrder {
   return {
     id: order.id,
     customerName: order.client?.name || "Cliente",
@@ -447,7 +440,7 @@ function mapApiOrder(order: ApiOrder): KitchenQueueOrder | null {
     status: order.status,
     paymentStatus: order.paymentStatus,
     totalValue: order.totalValue,
-    items: kitchenItems,
+    items: order.items.map(mapApiItem),
     source: "api",
     lastUpdate: Date.now(),
   };

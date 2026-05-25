@@ -2,16 +2,22 @@ package com.minimercado.backend.mapper;
 
 import com.minimercado.backend.dto.orderItem.OrderItemResponseDTO;
 import com.minimercado.backend.model.OrderItem;
-import org.mapstruct.Mapper;
-import org.mapstruct.Mapping;
+import org.springframework.stereotype.Component;
 
-@Mapper(componentModel = "spring")
-public interface OrderItemMapper {
+@Component
+public class OrderItemMapper {
 
-    @Mapping(source = "product.id", target = "productId")
-    @Mapping(source = "product.name", target = "productName")
-    @Mapping(source = "product.requiresKitchenPreparation", target = "requiresKitchenPreparation")
-    @Mapping(source = "unitPrice", target = "unitPrice")
-    @Mapping(expression = "java(item.getUnitPrice() * item.getQuantity())", target = "subtotal")
-    OrderItemResponseDTO toResponse(OrderItem item);
+    public OrderItemResponseDTO toResponse(OrderItem item) {
+        if (item == null) {
+            return null;
+        }
+
+        return new OrderItemResponseDTO(
+                item.getProduct().getId(),
+                item.getProduct().getName(),
+                item.getUnitPrice(),
+                item.getQuantity(),
+                item.getSubtotal()
+        );
+    }
 }

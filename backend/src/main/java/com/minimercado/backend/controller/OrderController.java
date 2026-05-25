@@ -7,24 +7,26 @@ import com.minimercado.backend.dto.order.OrderResponseDTO;
 import com.minimercado.backend.enums.OrderStatus;
 import com.minimercado.backend.enums.PaymentStatus;
 import com.minimercado.backend.service.order.OrderService;
+import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
-
+import java.util.Set;
 
 import static com.minimercado.backend.controller.ApiRoutes.*;
 
 @RestController
 @RequiredArgsConstructor
 public class OrderController {
+
+    private static final Set<String> ORDER_SORT_FIELDS =
+            Set.of("id", "orderTime", "status", "paymentStatus", "paymentMethod", "totalValue");
 
     private final OrderService orderService;
 
@@ -40,24 +42,31 @@ public class OrderController {
             @RequestParam(required = false) String clientCpf,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
-            @RequestParam(required = false) Boolean requiresKitchenPreparation,
-            @PageableDefault(size = 10, sort = "orderTime") Pageable pageable) {
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Ordenacao no formato campo,direcao. Campos aceitos: id, orderTime, status, paymentStatus, paymentMethod, totalValue.", example = "id,asc")
+            @RequestParam(defaultValue = "orderTime,asc") String sort) {
         return ResponseEntity.ok(orderService.list(
                 status,
                 paymentStatus,
                 clientCpf,
                 from,
                 to,
-                requiresKitchenPreparation,
-                pageable
+                PageRequestFactory.create(page, size, sort, ORDER_SORT_FIELDS)
         ));
     }
 
     @GetMapping(API_ORDER_GET_BY_CLIENT_CPF)
     public ResponseEntity<Page<OrderResponseDTO>> getByClient(
             @PathVariable("cpf") String clientCpf,
-            @PageableDefault(size = 10, sort = "orderTime") Pageable pageable) {
-        return ResponseEntity.ok(orderService.getFromClient(clientCpf, pageable));
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Ordenacao no formato campo,direcao. Campos aceitos: id, orderTime, status, paymentStatus, paymentMethod, totalValue.", example = "id,asc")
+            @RequestParam(defaultValue = "orderTime,asc") String sort) {
+        return ResponseEntity.ok(orderService.getFromClient(
+                clientCpf,
+                PageRequestFactory.create(page, size, sort, ORDER_SORT_FIELDS)
+        ));
     }
 
     @PostMapping(API_ORDER)

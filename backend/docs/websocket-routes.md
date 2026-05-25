@@ -105,7 +105,7 @@ Origem no código:
 
 ### `/topic/kitchen/orders`
 
-Notifica a cozinha sobre pedidos que possuem itens que exigem preparo.
+Notifica a cozinha sobre pedidos. Todo item pertence ao fluxo de preparo por definição de domínio.
 
 Payload:
 
@@ -127,18 +127,16 @@ Campos:
 
 - `orderId`: identificador do pedido.
 - `type`: tipo do evento da cozinha. Valores possíveis: `CREATED`, `UPDATED`, `CANCELLED`.
-- `items`: lista de itens do pedido que possuem `requiresKitchenPreparation = true`.
+- `items`: lista completa de itens do pedido.
 - `items[].productId`: identificador do produto.
 - `items[].productName`: nome do produto.
 - `items[].quantity`: quantidade solicitada.
 
 Quando é publicado:
 
-- Ao criar um pedido com pelo menos um item que exige preparo.
-- Ao editar um pedido:
-  - publica `UPDATED` quando o pedido editado contém itens que exigem preparo;
-  - também publica `UPDATED` quando o pedido tinha itens de cozinha antes da edição, mesmo que a nova lista não tenha mais itens de cozinha.
-- Ao cancelar um pedido com pelo menos um item que exige preparo.
+- Ao criar um pedido.
+- Ao editar um pedido.
+- Ao cancelar um pedido.
 
 Origem no código:
 
@@ -155,7 +153,6 @@ Rotas REST relacionadas:
 Observações:
 
 - A mensagem é enviada após o commit da transação.
-- Se o pedido não tiver itens que exigem preparo, o evento não é publicado, exceto no caso de edição em que o pedido tinha itens de cozinha anteriormente.
 
 ### `/topic/pickup/orders`
 

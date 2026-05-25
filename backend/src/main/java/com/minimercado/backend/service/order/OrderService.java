@@ -21,7 +21,6 @@ public interface OrderService {
             String clientCpf,
             LocalDateTime from,
             LocalDateTime to,
-            Boolean requiresKitchenPreparation,
             Pageable pageable);
 
     Page<OrderResponseDTO> getFromClient(String clientCpf, Pageable pageable);

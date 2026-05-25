@@ -6,7 +6,6 @@ public record ProductPostDTO(
         @NotNull String name,
         @NotNull Double price,
         String urlImage,
-        Boolean requiresKitchenPreparation,
         @NotNull Integer stockQuantity
 ) {
 }

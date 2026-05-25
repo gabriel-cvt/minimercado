@@ -5,15 +5,15 @@ import com.minimercado.backend.dto.product.ProductPutDTO;
 import com.minimercado.backend.dto.product.ProductResponseDTO;
 import com.minimercado.backend.dto.product.ProductStockUpdateDTO;
 import com.minimercado.backend.service.product.ProductService;
+import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Set;
 
 import static com.minimercado.backend.controller.ApiRoutes.*;
 
@@ -21,15 +21,23 @@ import static com.minimercado.backend.controller.ApiRoutes.*;
 @RequiredArgsConstructor
 public class ProductController {
 
+    private static final Set<String> PRODUCT_SORT_FIELDS = Set.of("id", "name", "price", "stockQuantity");
+
     private final ProductService productService;
 
     @GetMapping(API_PRODUCT)
     public ResponseEntity<Page<ProductResponseDTO>> listAll(
             @RequestParam(required = false) String name,
-            @RequestParam(required = false) Boolean requiresKitchenPreparation,
             @RequestParam(required = false) Boolean inStock,
-            @PageableDefault(size = 20, sort = "name") Pageable pageable) {
-        return ResponseEntity.ok(productService.getAll(pageable, name, requiresKitchenPreparation, inStock));
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @Parameter(description = "Ordenacao no formato campo,direcao. Campos aceitos: id, name, price, stockQuantity.", example = "id,asc")
+            @RequestParam(defaultValue = "name,asc") String sort) {
+        return ResponseEntity.ok(productService.getAll(
+                PageRequestFactory.create(page, size, sort, PRODUCT_SORT_FIELDS),
+                name,
+                inStock
+        ));
     }
 
     @GetMapping(API_PRODUCT_ID)

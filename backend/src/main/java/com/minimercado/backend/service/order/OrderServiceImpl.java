@@ -22,7 +22,6 @@ import com.minimercado.backend.repository.OrderRepository;
 import com.minimercado.backend.repository.ProductRepository;
 import com.minimercado.backend.service.client.ClientService;
 import jakarta.persistence.EntityNotFoundException;
-import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -61,10 +60,9 @@ public class OrderServiceImpl implements OrderService{
             String clientCpf,
             LocalDateTime from,
             LocalDateTime to,
-            Boolean requiresKitchenPreparation,
             Pageable pageable) {
         return orderRepository.findAll(
-                        buildSpecification(status, paymentStatus, clientCpf, from, to, requiresKitchenPreparation),
+                        buildSpecification(status, paymentStatus, clientCpf, from, to),
                         pageable
                 )
                 .map(mapper::toResponse);
@@ -115,7 +113,6 @@ public class OrderServiceImpl implements OrderService{
             order.setPaymentMethod(data.paymentMethod());
         }
 
-        boolean hadKitchenItems = hasKitchenItems(order);
         applyStockChangesForUpdate(order, data.items());
 
         order.getItems().clear();
@@ -124,7 +121,7 @@ public class OrderServiceImpl implements OrderService{
 
         Order savedOrder = orderRepository.save(order);
 
-        publishKitchenEvent(savedOrder, OrderKitchenEventType.UPDATED, hadKitchenItems);
+        publishKitchenEvent(savedOrder, OrderKitchenEventType.UPDATED);
         publishRealtimeEvent(savedOrder, OrderRealtimeEventType.ORDER_UPDATED, null, null);
         return mapper.toResponse(savedOrder);
     }
@@ -293,38 +290,23 @@ public class OrderServiceImpl implements OrderService{
     }
 
     private void publishKitchenEvent(Order order, OrderKitchenEventType eventType) {
-        publishKitchenEvent(order, eventType, false);
-    }
-
-    private void publishKitchenEvent(Order order, OrderKitchenEventType eventType, boolean forcePublish) {
-        List<OrderKitchenItemDTO> kitchenItems = buildKitchenItems(order);
-        if (!forcePublish && kitchenItems.isEmpty()) {
-            return;
-        }
-
         eventPublisher.publishEvent(
                 new OrderKitchenEvent(
                         order.getId(),
                         eventType,
-                        kitchenItems
+                        buildKitchenItems(order)
                 )
         );
     }
 
     private List<OrderKitchenItemDTO> buildKitchenItems(Order order) {
         return order.getItems().stream()
-                .filter(item -> item.getProduct().requiresKitchenPreparation())
                 .map(item -> new OrderKitchenItemDTO(
                         item.getProduct().getId(),
                         item.getProduct().getName(),
                         item.getQuantity()
                 ))
                 .toList();
-    }
-
-    private boolean hasKitchenItems(Order order) {
-        return order.getItems().stream()
-                .anyMatch(item -> item.getProduct().requiresKitchenPreparation());
     }
 
     private void publishRealtimeEvent(
@@ -347,8 +329,7 @@ public class OrderServiceImpl implements OrderService{
             PaymentStatus paymentStatus,
             String clientCpf,
             LocalDateTime from,
-            LocalDateTime to,
-            Boolean requiresKitchenPreparation) {
+            LocalDateTime to) {
         return (root, query, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
 
@@ -370,16 +351,6 @@ public class OrderServiceImpl implements OrderService{
 
             if (to != null) {
                 predicates.add(criteriaBuilder.lessThanOrEqualTo(root.<LocalDateTime>get("orderTime"), to));
-            }
-
-            if (requiresKitchenPreparation != null) {
-                query.distinct(true);
-                Join<Order, OrderItem> items = root.join("items");
-                Join<OrderItem, Product> product = items.join("product");
-                predicates.add(criteriaBuilder.equal(
-                        product.get("requiresKitchenPreparation"),
-                        requiresKitchenPreparation
-                ));
             }
 
             return criteriaBuilder.and(predicates.toArray(new Predicate[0]));

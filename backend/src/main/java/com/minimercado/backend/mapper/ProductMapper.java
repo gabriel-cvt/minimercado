@@ -2,9 +2,22 @@ package com.minimercado.backend.mapper;
 
 import com.minimercado.backend.dto.product.ProductResponseDTO;
 import com.minimercado.backend.model.Product;
-import org.mapstruct.Mapper;
+import org.springframework.stereotype.Component;
 
-@Mapper(componentModel = "spring")
-public interface ProductMapper {
-    ProductResponseDTO toResponse(Product product);
+@Component
+public class ProductMapper {
+
+    public ProductResponseDTO toResponse(Product product) {
+        if (product == null) {
+            return null;
+        }
+
+        return new ProductResponseDTO(
+                product.getId(),
+                product.getName(),
+                product.getPrice(),
+                product.getUrlImage(),
+                product.getStockQuantity()
+        );
+    }
 }

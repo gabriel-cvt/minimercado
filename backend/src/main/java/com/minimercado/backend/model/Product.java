@@ -24,9 +24,6 @@ public class Product {
     private String urlImage;
 
     @Column(nullable = false)
-    private Boolean requiresKitchenPreparation = true;
-
-    @Column(nullable = false)
     private Integer stockQuantity;
 
     @ManyToOne
@@ -38,16 +35,11 @@ public class Product {
         this.price = price;
     }
 
-    public Product(String name, Double price, String urlImage, Boolean requiresKitchenPreparation, Integer stockQuantity) {
+    public Product(String name, Double price, String urlImage, Integer stockQuantity) {
         this.name = name;
         this.price = price;
         this.urlImage = urlImage;
-        this.requiresKitchenPreparation = requiresKitchenPreparation;
         this.stockQuantity = stockQuantity;
-    }
-
-    public boolean requiresKitchenPreparation() {
-        return Boolean.TRUE.equals(this.requiresKitchenPreparation);
     }
 
     public void decreaseStock(Integer quantity) {

@@ -9,6 +9,15 @@ Este documento descreve as rotas REST existentes no backend do minimercado, seus
 - Paginação: endpoints paginados usam o padrão do Spring `Pageable`
 - Datas em query params: formato ISO date-time, por exemplo `2026-05-20T14:30:00`
 
+## Regra de cozinha
+
+- Todo produto é preparado na cozinha; não existe campo ou filtro para separar itens fora desse fluxo.
+- Em bancos criados antes desta mudança, remova a coluna legada antes de implantar a aplicação com perfil `prod`:
+
+```sql
+ALTER TABLE products DROP COLUMN IF EXISTS requires_kitchen_preparation;
+```
+
 ## Enums
 
 ### `OrderStatus`
@@ -45,6 +54,10 @@ Endpoints paginados aceitam os parâmetros padrão:
 | `page` | integer | Número da página, começando em `0`. |
 | `size` | integer | Quantidade de itens por página. |
 | `sort` | string | Campo de ordenação. Pode receber valores como `name,asc` ou `orderTime,desc`. |
+
+Os parâmetros devem ser enviados na query string, por exemplo:
+`?page=1&size=5&sort=id,asc`. No Swagger, preencha `sort` como string;
+não envie o valor como array JSON (`["id,asc"]`).
 
 Resposta paginada segue o formato `Page<T>` do Spring:
 
@@ -125,11 +138,10 @@ Query params:
 | Parâmetro | Tipo | Descrição |
 | --- | --- | --- |
 | `name` | string | Filtra produtos por trecho do nome, ignorando maiúsculas/minúsculas. |
-| `requiresKitchenPreparation` | boolean | Filtra produtos que exigem ou não preparo na cozinha. |
 | `inStock` | boolean | Quando `true`, retorna produtos com estoque maior que zero. Quando `false`, retorna produtos sem estoque. |
 | `page` | integer | Página. Padrão: `0`. |
 | `size` | integer | Tamanho da página. Padrão do controller: `20`. |
-| `sort` | string | Ordenação. Padrão do controller: `name`. |
+| `sort` | string | Ordenação. Padrão: `name,asc`. Campos: `id`, `name`, `price`, `stockQuantity`. |
 
 Exemplo:
 
@@ -147,7 +159,6 @@ Resposta `200 OK`:
       "name": "Café",
       "price": 4.5,
       "urlImage": "https://example.com/cafe.png",
-      "requiresKitchenPreparation": false,
       "stockQuantity": 30
     }
   ],
@@ -176,7 +187,6 @@ Resposta `200 OK`:
   "name": "Café",
   "price": 4.5,
   "urlImage": "https://example.com/cafe.png",
-  "requiresKitchenPreparation": false,
   "stockQuantity": 30
 }
 ```
@@ -192,7 +202,6 @@ Body:
   "name": "Sanduíche",
   "price": 12.9,
   "urlImage": "https://example.com/sanduiche.png",
-  "requiresKitchenPreparation": true,
   "stockQuantity": 20
 }
 ```
@@ -206,7 +215,7 @@ Campos obrigatórios:
 Observações:
 
 - `stockQuantity` não pode ser negativo.
-- Se `requiresKitchenPreparation` não for enviado, o backend usa `true`.
+- Todo produto pertence ao fluxo de preparo da cozinha por definição de domínio.
 
 Resposta `201 Created`:
 
@@ -216,7 +225,6 @@ Resposta `201 Created`:
   "name": "Sanduíche",
   "price": 12.9,
   "urlImage": "https://example.com/sanduiche.png",
-  "requiresKitchenPreparation": true,
   "stockQuantity": 20
 }
 ```
@@ -237,8 +245,7 @@ Body:
 {
   "name": "Sanduíche especial",
   "price": 15.9,
-  "urlImage": "https://example.com/sanduiche-especial.png",
-  "requiresKitchenPreparation": true
+  "urlImage": "https://example.com/sanduiche-especial.png"
 }
 ```
 
@@ -256,7 +263,6 @@ Resposta `200 OK`:
   "name": "Sanduíche especial",
   "price": 15.9,
   "urlImage": "https://example.com/sanduiche-especial.png",
-  "requiresKitchenPreparation": true,
   "stockQuantity": 20
 }
 ```
@@ -298,7 +304,6 @@ Resposta `200 OK`:
   "name": "Sanduíche especial",
   "price": 15.9,
   "urlImage": "https://example.com/sanduiche-especial.png",
-  "requiresKitchenPreparation": true,
   "stockQuantity": 25
 }
 ```
@@ -334,10 +339,9 @@ Query params:
 | `clientCpf` | string | Filtra pedidos de um CPF específico. |
 | `from` | date-time | Filtra pedidos com `orderTime` maior ou igual ao valor informado. |
 | `to` | date-time | Filtra pedidos com `orderTime` menor ou igual ao valor informado. |
-| `requiresKitchenPreparation` | boolean | Filtra pedidos que possuem itens que exigem ou não preparo na cozinha. |
 | `page` | integer | Página. Padrão: `0`. |
 | `size` | integer | Tamanho da página. Padrão do controller: `10`. |
-| `sort` | string | Ordenação. Padrão do controller: `orderTime`. |
+| `sort` | string | Ordenação. Padrão: `orderTime,asc`. Campos: `id`, `orderTime`, `status`, `paymentStatus`, `paymentMethod`, `totalValue`. |
 
 Exemplo:
 
@@ -359,7 +363,6 @@ Resposta `200 OK`:
         {
           "productId": 2,
           "productName": "Sanduíche",
-          "requiresKitchenPreparation": true,
           "unitPrice": 12.9,
           "quantity": 2,
           "subtotal": 25.8
@@ -404,7 +407,6 @@ Resposta `200 OK`:
     {
       "productId": 2,
       "productName": "Sanduíche",
-      "requiresKitchenPreparation": true,
       "unitPrice": 12.9,
       "quantity": 2,
       "subtotal": 25.8
@@ -437,7 +439,7 @@ Query params:
 | --- | --- | --- |
 | `page` | integer | Página. Padrão: `0`. |
 | `size` | integer | Tamanho da página. Padrão do controller: `10`. |
-| `sort` | string | Ordenação. Padrão do controller: `orderTime`. |
+| `sort` | string | Ordenação. Padrão: `orderTime,asc`. Campos: `id`, `orderTime`, `status`, `paymentStatus`, `paymentMethod`, `totalValue`. |
 
 Resposta `200 OK`: `Page<OrderResponseDTO>`.
 
@@ -476,7 +478,7 @@ Observações:
 - Cada produto precisa existir.
 - O estoque dos itens é reduzido na criação.
 - O pedido nasce com `status = PENDING` e `paymentStatus = PENDING`.
-- Se houver item com `requiresKitchenPreparation = true`, publica evento WebSocket em `/topic/kitchen/orders`.
+- Publica evento WebSocket em `/topic/kitchen/orders`, pois todo item é preparado na cozinha.
 - Sempre publica evento geral em `/topic/orders` e `/topic/orders/public`.
 
 Resposta `201 Created`: `OrderResponseDTO`.
@@ -520,7 +522,7 @@ Observações:
 - Não é permitido editar pedido `CANCELLED` ou `FINISHED`.
 - O backend recalcula diferenças de estoque entre a versão atual e a versão solicitada.
 - O total do pedido é recalculado.
-- Se o pedido tiver ou tiver tido itens de cozinha, publica evento em `/topic/kitchen/orders`.
+- Publica evento em `/topic/kitchen/orders`.
 - Sempre publica evento geral em `/topic/orders` e `/topic/orders/public`.
 
 Resposta `200 OK`: `OrderResponseDTO`.
@@ -607,7 +609,7 @@ Observações:
 - O estoque dos itens é devolvido.
 - Atualiza `status` para `CANCELLED`.
 - Atualiza `paymentStatus` para `CANCELLED`.
-- Se houver item com `requiresKitchenPreparation = true`, publica evento em `/topic/kitchen/orders`.
+- Publica evento em `/topic/kitchen/orders`.
 - Publica evento geral em `/topic/orders` e `/topic/orders/public`.
 
 Resposta `200 OK`: `OrderResponseDTO`.
@@ -664,4 +666,3 @@ Campos:
 | `PATCH` | `/api/orders/{id}/finish` | Finaliza pedido. |
 | `PATCH` | `/api/orders/{id}/cancel` | Cancela pedido. |
 | `GET` | `/api/dashboard/summary` | Retorna resumo operacional do dia. |
-

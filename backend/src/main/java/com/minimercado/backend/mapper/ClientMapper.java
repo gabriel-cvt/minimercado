@@ -3,15 +3,33 @@ package com.minimercado.backend.mapper;
 import com.minimercado.backend.dto.client.ClientPostDTO;
 import com.minimercado.backend.dto.client.ClientResponseDTO;
 import com.minimercado.backend.model.Client;
-import org.mapstruct.Mapper;
-import org.mapstruct.Mapping;
+import org.springframework.stereotype.Component;
 
-@Mapper(componentModel = "spring")
-public interface ClientMapper {
+@Component
+public class ClientMapper {
 
-    ClientResponseDTO toResponse(Client client);
+    public ClientResponseDTO toResponse(Client client) {
+        if (client == null) {
+            return null;
+        }
 
-    @Mapping(target = "id", ignore = true)
-    @Mapping(target = "orders", ignore = true)
-    Client toEntity(ClientPostDTO dto);
+        return new ClientResponseDTO(
+                client.getId(),
+                client.getName(),
+                client.getCpf(),
+                client.getPhoneNumber()
+        );
+    }
+
+    public Client toEntity(ClientPostDTO dto) {
+        if (dto == null) {
+            return null;
+        }
+
+        Client client = new Client();
+        client.setName(dto.name());
+        client.setCpf(dto.cpf());
+        client.setPhoneNumber(dto.phoneNumber());
+        return client;
+    }
 }
