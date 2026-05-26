@@ -4,6 +4,12 @@ const API_BASE_URL = import.meta.env?.VITE_API_URL || "http://localhost:8080";
 
 export type ApiPaymentMethod = "PIX" | "DINHEIRO";
 
+export interface ApiProductVariant {
+  id: number;
+  name: string;
+  available: boolean;
+}
+
 export interface ApiClient {
   id: number;
   name: string;
@@ -17,6 +23,10 @@ export interface ApiProduct {
   price: number;
   urlImage?: string;
   stockQuantity: number;
+  hasVariants: boolean;
+  variantType: string | null;
+  variantSelectionRequired: boolean;
+  variants: ApiProductVariant[];
 }
 
 export interface ApiOrderItem {
@@ -25,6 +35,8 @@ export interface ApiOrderItem {
   unitPrice: number;
   quantity: number;
   subtotal: number;
+  selectedVariantId: number | null;
+  selectedVariantName: string | null;
 }
 
 export interface ApiOrder {
@@ -40,6 +52,7 @@ export interface ApiOrder {
   client: ApiClient;
   paymentMethod: ApiPaymentMethod | null;
   totalValue: number;
+  observation: string | null;
 }
 
 export interface ApiDashboardSummary {
@@ -151,12 +164,18 @@ export function getProducts(
   );
 }
 
-export function createProduct(data: {
+export interface ProductWriteData {
   name: string;
   price: number;
   urlImage?: string;
-  stockQuantity: number;
-}) {
+  stockQuantity?: number;
+  hasVariants: boolean;
+  variantType?: string;
+  variantSelectionRequired: boolean;
+  variants: { id?: number; name: string; available: boolean }[];
+}
+
+export function createProduct(data: ProductWriteData & { stockQuantity: number }) {
   return request<ApiProduct>("/api/products", {
     method: "POST",
     body: JSON.stringify(data),
@@ -167,14 +186,7 @@ export function getProduct(id: number) {
   return request<ApiProduct>(`/api/products/${id}`);
 }
 
-export function updateProduct(
-  id: number,
-  data: {
-    name?: string;
-    price?: number;
-    urlImage?: string;
-  },
-) {
+export function updateProduct(id: number, data: Omit<ProductWriteData, "stockQuantity">) {
   return request<ApiProduct>(`/api/products/${id}`, {
     method: "PUT",
     body: JSON.stringify(data),
@@ -223,9 +235,10 @@ export function getOrder(id: number) {
 }
 
 export function createOrder(data: {
-  items: { productId: number; quantity: number }[];
+  items: { productId: number; quantity: number; selectedVariantId?: number }[];
   clienteCpf: string;
   paymentMethod: ApiPaymentMethod;
+  observation?: string;
 }) {
   return request<ApiOrder>("/api/orders", {
     method: "POST",
@@ -236,8 +249,9 @@ export function createOrder(data: {
 export function updateOrder(
   id: number,
   data: {
-    items: { productId: number; quantity: number }[];
+    items: { productId: number; quantity: number; selectedVariantId?: number }[];
     clienteCpf: string;
+    observation?: string;
   },
 ) {
   return request<ApiOrder>(`/api/orders/${id}`, {

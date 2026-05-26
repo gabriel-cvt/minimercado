@@ -52,6 +52,7 @@ interface KitchenQueueItem {
   productName: string;
   quantity: number;
   subtotal?: number;
+  selectedVariantName?: string | null;
 }
 
 interface KitchenQueueOrder {
@@ -62,6 +63,7 @@ interface KitchenQueueOrder {
   paymentStatus: string;
   totalValue?: number;
   items: KitchenQueueItem[];
+  observation?: string | null;
   source: "api" | "websocket";
   lastUpdate: number;
 }
@@ -424,7 +426,7 @@ function KitchenOrderCard({
       <div className="p-5 space-y-2">
         {order.items.map((item) => (
           <div
-            key={`${order.id}-${item.productId}`}
+            key={`${order.id}-${item.productId}-${item.selectedVariantName ?? "base"}`}
             className="min-h-16 rounded-xl bg-muted/45 p-3 flex items-center gap-3"
           >
             <div className="w-10 h-10 rounded-lg bg-card shadow-sm flex items-center justify-center">
@@ -432,6 +434,9 @@ function KitchenOrderCard({
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-black leading-tight truncate">{item.productName}</p>
+              {item.selectedVariantName && (
+                <p className="text-xs font-black text-primary">{item.selectedVariantName}</p>
+              )}
               {item.subtotal !== undefined && (
                 <p className="text-xs text-muted-foreground font-semibold">
                   {formatBRL(item.subtotal)}
@@ -443,6 +448,12 @@ function KitchenOrderCard({
             </span>
           </div>
         ))}
+        {order.observation && (
+          <div className="rounded-xl border border-status-preparing/30 bg-status-preparing/10 p-3">
+            <p className="text-[10px] uppercase font-black text-status-assembly">Observação</p>
+            <p className="text-sm font-bold mt-1">{order.observation}</p>
+          </div>
+        )}
       </div>
 
       <div className="px-5 pb-5">
@@ -481,6 +492,7 @@ function mapApiOrder(order: ApiOrder): KitchenQueueOrder {
     paymentStatus: order.paymentStatus,
     totalValue: order.totalValue,
     items: order.items.map(mapApiItem),
+    observation: order.observation,
     source: "api",
     lastUpdate: Date.now(),
   };
@@ -492,6 +504,7 @@ function mapApiItem(item: ApiOrderItem): KitchenQueueItem {
     productName: item.productName,
     quantity: item.quantity,
     subtotal: item.subtotal,
+    selectedVariantName: item.selectedVariantName,
   };
 }
 
@@ -503,6 +516,7 @@ function mapKitchenEvent(event: KitchenOrderEvent): KitchenQueueOrder {
     status: "PENDING",
     paymentStatus: "PENDING",
     items: event.items.map(mapEventItem),
+    observation: event.observation,
     source: "websocket",
     lastUpdate: Date.now(),
   };
@@ -513,6 +527,7 @@ function mapEventItem(item: KitchenOrderItem): KitchenQueueItem {
     productId: item.productId,
     productName: item.productName,
     quantity: item.quantity,
+    selectedVariantName: item.selectedVariantName,
   };
 }
 

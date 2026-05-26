@@ -62,6 +62,15 @@ type CreateFormData = z.infer<typeof createSchema>;
 type EditFormData = z.infer<typeof editSchema>;
 type StockFormData = z.infer<typeof stockSchema>;
 type StockFilter = "all" | "available" | "out";
+type VariantDraft = { id?: number; name: string; available: boolean };
+type ProductConfiguration = {
+  hasVariants: boolean;
+  variantType: string;
+  variantSelectionRequired: boolean;
+  variants: VariantDraft[];
+};
+type CreateProductFormData = CreateFormData & ProductConfiguration;
+type EditProductFormData = EditFormData & ProductConfiguration;
 
 const PAGE_SIZE = 12;
 
@@ -124,11 +133,15 @@ export function ProductsManagement() {
       }),
   });
   const editMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: EditFormData }) =>
+    mutationFn: ({ id, data }: { id: number; data: EditProductFormData }) =>
       updateProduct(id, {
         name: data.name,
         price: data.price,
         urlImage: data.urlImage,
+        hasVariants: data.hasVariants,
+        variantType: data.variantType || undefined,
+        variantSelectionRequired: data.variantSelectionRequired,
+        variants: data.variants,
       }),
     onSuccess: async () => {
       await refreshProducts();
@@ -425,6 +438,13 @@ function ProductCard({
             ? `${product.stockQuantity} unidades em estoque`
             : "Sem estoque"}
         </div>
+        <div className="flex flex-wrap gap-2">
+          {product.hasVariants && (
+            <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
+              {product.variantType} · {product.variants.length} opções
+            </span>
+          )}
+        </div>
         <div className="mt-auto grid grid-cols-[1fr_1fr_auto] gap-2 pt-2">
           <button
             type="button"
@@ -486,7 +506,7 @@ function CreateProductModal({
 }: {
   pending: boolean;
   onClose: () => void;
-  onSubmit: (data: CreateFormData) => void;
+  onSubmit: (data: CreateProductFormData) => void;
 }) {
   const {
     register,
@@ -497,6 +517,19 @@ function CreateProductModal({
     resolver: zodResolver(createSchema),
     defaultValues: { name: "", price: 0, urlImage: "", stockQuantity: 0 },
   });
+  const [configuration, setConfiguration] = useState<ProductConfiguration>(
+    emptyProductConfiguration(),
+  );
+  const [configurationError, setConfigurationError] = useState<string>();
+
+  function submit(data: CreateFormData) {
+    const configured = validateConfiguration(configuration);
+    if (typeof configured === "string") {
+      setConfigurationError(configured);
+      return;
+    }
+    onSubmit({ ...data, ...configured });
+  }
 
   return (
     <Modal
@@ -504,7 +537,7 @@ function CreateProductModal({
       subtitle="Preencha todos os dados disponíveis na API."
       onClose={onClose}
     >
-      <form onSubmit={handleSubmit(onSubmit)} className="grid md:grid-cols-[1fr_180px] gap-5">
+      <form onSubmit={handleSubmit(submit)} className="grid md:grid-cols-[1fr_180px] gap-5">
         <ProductFields
           nameField={register("name")}
           nameError={errors.name?.message}
@@ -521,6 +554,14 @@ function CreateProductModal({
           </p>
           <ProductImage key={watch("urlImage")} url={watch("urlImage")} alt="Pré-visualização" />
         </div>
+        <ProductConfigurationFields
+          configuration={configuration}
+          onChange={(next) => {
+            setConfiguration(next);
+            setConfigurationError(undefined);
+          }}
+          error={configurationError}
+        />
         <ModalActions pending={pending} action="Cadastrar produto" onClose={onClose} />
       </form>
     </Modal>
@@ -536,7 +577,7 @@ function EditProductModal({
   product: ApiProduct;
   pending: boolean;
   onClose: () => void;
-  onSubmit: (data: EditFormData) => void;
+  onSubmit: (data: EditProductFormData) => void;
 }) {
   const {
     register,
@@ -551,6 +592,26 @@ function EditProductModal({
       urlImage: product.urlImage ?? "",
     },
   });
+  const [configuration, setConfiguration] = useState<ProductConfiguration>({
+    hasVariants: product.hasVariants,
+    variantType: product.variantType ?? "",
+    variantSelectionRequired: product.variantSelectionRequired,
+    variants: product.variants.map((variant) => ({
+      id: variant.id,
+      name: variant.name,
+      available: variant.available,
+    })),
+  });
+  const [configurationError, setConfigurationError] = useState<string>();
+
+  function submit(data: EditFormData) {
+    const configured = validateConfiguration(configuration);
+    if (typeof configured === "string") {
+      setConfigurationError(configured);
+      return;
+    }
+    onSubmit({ ...data, ...configured });
+  }
 
   return (
     <Modal
@@ -558,7 +619,7 @@ function EditProductModal({
       subtitle="O estoque possui uma ação própria para registrar a movimentação."
       onClose={onClose}
     >
-      <form onSubmit={handleSubmit(onSubmit)} className="grid md:grid-cols-[1fr_180px] gap-5">
+      <form onSubmit={handleSubmit(submit)} className="grid md:grid-cols-[1fr_180px] gap-5">
         <ProductFields
           nameField={register("name")}
           nameError={errors.name?.message}
@@ -576,6 +637,14 @@ function EditProductModal({
             Estoque atual: {product.stockQuantity}
           </p>
         </div>
+        <ProductConfigurationFields
+          configuration={configuration}
+          onChange={(next) => {
+            setConfiguration(next);
+            setConfigurationError(undefined);
+          }}
+          error={configurationError}
+        />
         <ModalActions pending={pending} action="Salvar alterações" onClose={onClose} />
       </form>
     </Modal>
@@ -621,6 +690,168 @@ function ProductFields({
       </Field>
     </div>
   );
+}
+
+function ProductConfigurationFields({
+  configuration,
+  onChange,
+  error,
+}: {
+  configuration: ProductConfiguration;
+  onChange: (configuration: ProductConfiguration) => void;
+  error?: string;
+}) {
+  const updateVariant = (index: number, variant: VariantDraft) =>
+    onChange({
+      ...configuration,
+      variants: configuration.variants.map((item, itemIndex) =>
+        itemIndex === index ? variant : item,
+      ),
+    });
+
+  return (
+    <section className="md:col-span-2 rounded-2xl border bg-muted/25 p-4 space-y-4">
+      <div>
+        <p className="font-black">Configuração de variantes</p>
+        <p className="text-sm text-muted-foreground">
+          Combos são cadastrados como produtos comuns. Use variantes somente quando o item possuir
+          escolhas, como sabor ou recheio.
+        </p>
+      </div>
+      <label className="flex items-center gap-3 rounded-xl bg-card border p-3">
+        <input
+          type="checkbox"
+          checked={configuration.hasVariants}
+          onChange={(event) =>
+            onChange({
+              ...configuration,
+              hasVariants: event.target.checked,
+              variantSelectionRequired: event.target.checked
+                ? configuration.variantSelectionRequired
+                : false,
+              variants:
+                event.target.checked && configuration.variants.length === 0
+                  ? [{ name: "", available: true }]
+                  : configuration.variants,
+            })
+          }
+          className="size-4 accent-primary"
+        />
+        <span className="text-sm font-bold">Produto possui variantes ou sabores</span>
+      </label>
+      {configuration.hasVariants && (
+        <div className="space-y-3 rounded-xl bg-card border p-4">
+          <div className="grid sm:grid-cols-[1fr_auto] gap-3 items-end">
+            <Field label="Tipo de variação">
+              <input
+                value={configuration.variantType}
+                onChange={(event) =>
+                  onChange({ ...configuration, variantType: event.target.value })
+                }
+                placeholder="Ex: Recheio ou Sabor"
+                className="input"
+              />
+            </Field>
+            <label className="h-12 flex items-center gap-2 text-sm font-bold">
+              <input
+                type="checkbox"
+                checked={configuration.variantSelectionRequired}
+                onChange={(event) =>
+                  onChange({
+                    ...configuration,
+                    variantSelectionRequired: event.target.checked,
+                  })
+                }
+                className="size-4 accent-primary"
+              />
+              Escolha obrigatória
+            </label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Todas as variantes usam o preço do produto. Desmarque disponível para ocultar apenas uma
+            opção no checkout.
+          </p>
+          {configuration.variants.map((variant, index) => (
+            <div key={index} className="flex flex-wrap sm:flex-nowrap gap-2 items-center">
+              <input
+                value={variant.name}
+                onChange={(event) => updateVariant(index, { ...variant, name: event.target.value })}
+                placeholder="Nome da variante"
+                className="input flex-1"
+              />
+              <label className="h-12 px-3 rounded-xl bg-muted flex items-center gap-2 text-xs font-bold">
+                <input
+                  type="checkbox"
+                  checked={variant.available}
+                  onChange={(event) =>
+                    updateVariant(index, { ...variant, available: event.target.checked })
+                  }
+                  className="size-4 accent-primary"
+                />
+                Disponível
+              </label>
+              <button
+                type="button"
+                onClick={() =>
+                  onChange({
+                    ...configuration,
+                    variants: configuration.variants.filter((_, itemIndex) => itemIndex !== index),
+                  })
+                }
+                className="h-12 px-3 rounded-xl border text-destructive font-bold"
+              >
+                Remover
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() =>
+              onChange({
+                ...configuration,
+                variants: [...configuration.variants, { name: "", available: true }],
+              })
+            }
+            className="rounded-xl border px-4 py-2 text-sm font-bold"
+          >
+            Adicionar variante
+          </button>
+        </div>
+      )}
+      {error && <p className="text-sm text-destructive font-semibold">{error}</p>}
+    </section>
+  );
+}
+
+function emptyProductConfiguration(): ProductConfiguration {
+  return {
+    hasVariants: false,
+    variantType: "",
+    variantSelectionRequired: false,
+    variants: [],
+  };
+}
+
+function validateConfiguration(configuration: ProductConfiguration): ProductConfiguration | string {
+  const variants = configuration.variants.filter((variant) => variant.name.trim() !== "");
+  if (configuration.hasVariants) {
+    if (configuration.variantType.trim() === "") return "Informe o tipo da variação.";
+    if (variants.length === 0) return "Adicione ao menos uma variante.";
+    if (
+      new Set(variants.map((variant) => variant.name.trim().toLowerCase())).size !== variants.length
+    ) {
+      return "Não repita nomes de variantes.";
+    }
+  }
+
+  return {
+    ...configuration,
+    variantType: configuration.hasVariants ? configuration.variantType.trim() : "",
+    variantSelectionRequired: configuration.hasVariants && configuration.variantSelectionRequired,
+    variants: configuration.hasVariants
+      ? variants.map((variant) => ({ ...variant, name: variant.name.trim() }))
+      : [],
+  };
 }
 
 function StockModal({
@@ -762,7 +993,7 @@ function Modal({
         animate={{ scale: 1, y: 0 }}
         exit={{ scale: 0.96, y: 15 }}
         onClick={(event) => event.stopPropagation()}
-        className={`bg-card rounded-3xl shadow-elegant w-full p-6 md:p-7 ${narrow ? "max-w-md" : "max-w-2xl"}`}
+        className={`bg-card rounded-3xl shadow-elegant w-full p-6 md:p-7 ${narrow ? "max-w-md" : "max-w-4xl"}`}
       >
         <div className="flex justify-between gap-4 mb-5">
           <div>

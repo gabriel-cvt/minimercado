@@ -153,13 +153,15 @@ export function OrderDetails() {
       order,
       items,
       clienteCpf,
+      observation,
     }: {
       order: ApiOrder;
-      items: { productId: number; quantity: number }[];
+      items: { productId: number; quantity: number; selectedVariantId?: number }[];
       clienteCpf: string;
+      observation?: string;
     }) => {
       suppressNextRealtimeToast(order.id, "kitchen:UPDATED");
-      return updateOrder(order.id, { items, clienteCpf });
+      return updateOrder(order.id, { items, clienteCpf, observation });
     },
     onSuccess: async (updated, variables) => {
       queryClient.setQueryData(["orders", "detail", updated.id], updated);
@@ -289,7 +291,7 @@ export function OrderDetails() {
               <div className="space-y-2 mb-6">
                 {selected.items.map((item) => (
                   <div
-                    key={item.productId}
+                    key={`${item.productId}-${item.selectedVariantId ?? "base"}`}
                     className="flex items-center gap-3 p-4 bg-muted/40 rounded-xl"
                   >
                     <div className="w-10 h-10 rounded-lg bg-card flex items-center justify-center shadow-sm">
@@ -297,6 +299,9 @@ export function OrderDetails() {
                     </div>
                     <div className="flex-1">
                       <p className="font-bold">{item.productName}</p>
+                      {item.selectedVariantName && (
+                        <p className="text-xs font-bold text-primary">{item.selectedVariantName}</p>
+                      )}
                     </div>
                     <span className="bg-primary/10 text-primary font-black px-3 py-1 rounded-lg">
                       x{item.quantity}
@@ -304,6 +309,14 @@ export function OrderDetails() {
                   </div>
                 ))}
               </div>
+              {selected.observation && (
+                <div className="mb-6 rounded-xl border border-status-preparing/30 bg-status-preparing/10 p-4">
+                  <p className="text-xs font-black uppercase text-status-assembly mb-1">
+                    Observação
+                  </p>
+                  <p className="text-sm font-semibold">{selected.observation}</p>
+                </div>
+              )}
 
               <div className="space-y-3">
                 <OrderActionMenu
@@ -341,8 +354,8 @@ export function OrderDetails() {
             order={editTarget}
             pending={editMutation.isPending}
             onClose={() => setEditTarget(null)}
-            onSubmit={(items, clienteCpf) =>
-              editMutation.mutate({ order: editTarget, items, clienteCpf })
+            onSubmit={(items, clienteCpf, observation) =>
+              editMutation.mutate({ order: editTarget, items, clienteCpf, observation })
             }
           />
         )}
@@ -609,6 +622,14 @@ function ActionButton({
   );
 }
 
+type EditableOrderLine = {
+  key: string;
+  productId: number;
+  quantity: number;
+  selectedVariantId?: number;
+  selectedVariantName?: string | null;
+};
+
 function EditOrderModal({
   order,
   pending,
@@ -618,12 +639,24 @@ function EditOrderModal({
   order: ApiOrder;
   pending: boolean;
   onClose: () => void;
-  onSubmit: (items: { productId: number; quantity: number }[], clienteCpf: string) => void;
+  onSubmit: (
+    items: { productId: number; quantity: number; selectedVariantId?: number }[],
+    clienteCpf: string,
+    observation?: string,
+  ) => void;
 }) {
   const [cpf, setCpf] = useState(order.client.cpf);
   const [search, setSearch] = useState("");
-  const [quantities, setQuantities] = useState<Record<number, number>>(
-    Object.fromEntries(order.items.map((item) => [item.productId, item.quantity])),
+  const [observation, setObservation] = useState(order.observation ?? "");
+  const [choosingVariantFor, setChoosingVariantFor] = useState<number | null>(null);
+  const [lines, setLines] = useState<EditableOrderLine[]>(
+    order.items.map((item, index) => ({
+      key: `current-${index}`,
+      productId: item.productId,
+      quantity: item.quantity,
+      selectedVariantId: item.selectedVariantId ?? undefined,
+      selectedVariantName: item.selectedVariantName,
+    })),
   );
   const productsQuery = useQuery({
     queryKey: ["products", "order-edit"],
@@ -632,39 +665,108 @@ function EditOrderModal({
   const products = useMemo(() => {
     const availableProducts = productsQuery.data?.content ?? [];
     const productIds = new Set(availableProducts.map((product) => product.id));
-    const missingCurrentProducts: ApiProduct[] = order.items
-      .filter((item) => !productIds.has(item.productId))
-      .map((item) => ({
-        id: item.productId,
-        name: item.productName,
-        price: item.unitPrice,
-        stockQuantity: 0,
-      }));
+    const missingCurrentProducts = Array.from(
+      new Map(
+        order.items
+          .filter((item) => !productIds.has(item.productId))
+          .map((item) => [
+            item.productId,
+            {
+              id: item.productId,
+              name: item.productName,
+              price: item.unitPrice,
+              stockQuantity: 0,
+              hasVariants: item.selectedVariantId !== null,
+              variantType: item.selectedVariantId !== null ? "Opção" : null,
+              variantSelectionRequired: item.selectedVariantId !== null,
+              variants:
+                item.selectedVariantId !== null
+                  ? [
+                      {
+                        id: item.selectedVariantId,
+                        name: item.selectedVariantName ?? "Opção selecionada",
+                        available: true,
+                      },
+                    ]
+                  : [],
+            },
+          ]),
+      ).values(),
+    ) satisfies ApiProduct[];
     return [...availableProducts, ...missingCurrentProducts];
   }, [order.items, productsQuery.data?.content]);
   const initialQuantity = (productId: number) =>
-    order.items.find((item) => item.productId === productId)?.quantity ?? 0;
+    order.items
+      .filter((item) => item.productId === productId)
+      .reduce((total, item) => total + item.quantity, 0);
+  const requestedQuantity = (productId: number) =>
+    lines
+      .filter((line) => line.productId === productId)
+      .reduce((total, line) => total + line.quantity, 0);
   const visibleProducts = products.filter((product) =>
     product.name.toLowerCase().includes(search.toLowerCase()),
   );
-  const requestedItems = Object.entries(quantities)
-    .filter(([, quantity]) => quantity > 0)
-    .map(([productId, quantity]) => ({ productId: Number(productId), quantity }));
+  const requestedItems = lines
+    .filter((line) => line.quantity > 0)
+    .map((line) => ({
+      productId: line.productId,
+      quantity: line.quantity,
+      selectedVariantId: line.selectedVariantId,
+    }));
   const projectedTotal = requestedItems.reduce((total, item) => {
     const product = products.find((entry) => entry.id === item.productId);
     return total + (product?.price ?? 0) * item.quantity;
   }, 0);
   const cpfIsValid = isValidCPF(cpf);
+  const variantsAreValid = requestedItems.every((item) => {
+    const product = products.find((entry) => entry.id === item.productId);
+    return !product?.hasVariants || !product.variantSelectionRequired || item.selectedVariantId;
+  });
 
-  function adjustQuantity(product: ApiProduct, nextQuantity: number) {
+  function adjustQuantity(line: EditableOrderLine, product: ApiProduct, difference: number) {
+    const nextQuantity = line.quantity + difference;
     const maxQuantity = product.stockQuantity + initialQuantity(product.id);
-    if (nextQuantity < 0 || nextQuantity > maxQuantity) return;
-    setQuantities((current) => {
-      const next = { ...current };
-      if (nextQuantity === 0) delete next[product.id];
-      else next[product.id] = nextQuantity;
-      return next;
-    });
+    if (nextQuantity < 0 || requestedQuantity(product.id) + difference > maxQuantity) return;
+    setLines((current) =>
+      nextQuantity === 0
+        ? current.filter((entry) => entry.key !== line.key)
+        : current.map((entry) =>
+            entry.key === line.key ? { ...entry, quantity: nextQuantity } : entry,
+          ),
+    );
+  }
+
+  function addLine(product: ApiProduct, selectedVariantId?: number) {
+    const maxQuantity = product.stockQuantity + initialQuantity(product.id);
+    if (requestedQuantity(product.id) >= maxQuantity) return;
+    const selectedVariant = product.variants.find((variant) => variant.id === selectedVariantId);
+    setLines((current) => [
+      ...current,
+      {
+        key: `new-${product.id}-${selectedVariantId ?? "base"}-${current.length}`,
+        productId: product.id,
+        quantity: 1,
+        selectedVariantId,
+        selectedVariantName: selectedVariant?.name,
+      },
+    ]);
+    setChoosingVariantFor(null);
+  }
+
+  function selectLineVariant(line: EditableOrderLine, selectedVariantId?: number) {
+    const product = products.find((entry) => entry.id === line.productId);
+    const selectedVariant = product?.variants.find((variant) => variant.id === selectedVariantId);
+    setLines((current) =>
+      current.map((entry) =>
+        entry.key === line.key
+          ? {
+              ...entry,
+              selectedVariantId,
+              selectedVariantName: selectedVariant?.name,
+            }
+          : entry,
+      ),
+    );
   }
 
   return (
@@ -723,6 +825,16 @@ function EditOrderModal({
           <p className="text-xs text-muted-foreground">
             Pagamentos são alterados pela ação "Marcar como pago", separada da edição.
           </p>
+          <label className="block">
+            <span className="text-sm font-semibold mb-1.5 block">Observação do pedido</span>
+            <textarea
+              value={observation}
+              onChange={(event) => setObservation(event.target.value.slice(0, 500))}
+              rows={2}
+              placeholder="Ex: sem molho, retirar cebola..."
+              className="input min-h-20 resize-none"
+            />
+          </label>
           <label className="relative block">
             <span className="sr-only">Buscar item para edição</span>
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -734,6 +846,85 @@ function EditOrderModal({
             />
           </label>
 
+          <div className="space-y-2">
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Itens selecionados
+            </p>
+            {lines.map((line) => {
+              const product = products.find((entry) => entry.id === line.productId);
+              if (!product) return null;
+              return (
+                <div
+                  key={line.key}
+                  className="rounded-xl border p-3 flex flex-wrap items-center justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <p className="font-bold truncate">{product.name}</p>
+                    <p className="text-xs text-muted-foreground">{formatBRL(product.price)}</p>
+                    {product.hasVariants && (
+                      <select
+                        value={line.selectedVariantId ?? ""}
+                        onChange={(event) =>
+                          selectLineVariant(
+                            line,
+                            event.target.value === "" ? undefined : Number(event.target.value),
+                          )
+                        }
+                        className="mt-2 h-10 rounded-lg border bg-card px-2 text-xs font-bold"
+                      >
+                        {!product.variantSelectionRequired && (
+                          <option value="">Sem {product.variantType?.toLowerCase()}</option>
+                        )}
+                        {product.variantSelectionRequired && <option value="">Selecione...</option>}
+                        {product.variants.map((variant) => (
+                          <option
+                            key={variant.id}
+                            value={variant.id}
+                            disabled={!variant.available && line.selectedVariantId !== variant.id}
+                          >
+                            {variant.name}
+                            {!variant.available ? " (indisponível)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                  <div className="rounded-lg bg-muted flex items-center p-1 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => adjustQuantity(line, product, -1)}
+                      aria-label={`Remover uma unidade de ${product.name}`}
+                      className="w-9 h-9 bg-card rounded-lg flex items-center justify-center"
+                    >
+                      <Minus className="w-4 h-4" />
+                    </button>
+                    <span className="w-8 text-center font-black">{line.quantity}</span>
+                    <button
+                      type="button"
+                      disabled={
+                        requestedQuantity(product.id) >=
+                          product.stockQuantity + initialQuantity(product.id) ||
+                        (product.hasVariants &&
+                          product.variants.find((variant) => variant.id === line.selectedVariantId)
+                            ?.available === false)
+                      }
+                      onClick={() => adjustQuantity(line, product, 1)}
+                      aria-label={`Adicionar uma unidade de ${product.name}`}
+                      className="w-9 h-9 bg-primary text-primary-foreground rounded-lg flex items-center justify-center disabled:opacity-40"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            {lines.length === 0 && (
+              <p className="rounded-xl bg-muted py-6 text-center text-sm text-muted-foreground">
+                Adicione ao menos um produto.
+              </p>
+            )}
+          </div>
+
           {productsQuery.isLoading && (
             <p className="text-sm text-muted-foreground">Carregando catálogo...</p>
           )}
@@ -741,41 +932,65 @@ function EditOrderModal({
             <p className="text-sm text-destructive">Não foi possível carregar o catálogo.</p>
           )}
           <div className="space-y-2">
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Adicionar produto
+            </p>
             {visibleProducts.map((product) => {
-              const quantity = quantities[product.id] ?? 0;
               const maxQuantity = product.stockQuantity + initialQuantity(product.id);
+              const cannotAdd =
+                requestedQuantity(product.id) >= maxQuantity ||
+                (product.hasVariants &&
+                  product.variantSelectionRequired &&
+                  !product.variants.some((variant) => variant.available));
               return (
-                <div
-                  key={product.id}
-                  className="rounded-xl border p-3 flex flex-wrap items-center justify-between gap-3"
-                >
-                  <div className="min-w-0">
-                    <p className="font-bold truncate">{product.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatBRL(product.price)} · até {maxQuantity} no pedido
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-muted flex items-center p-1 gap-2">
+                <div key={product.id} className="rounded-xl border p-3 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-bold truncate">{product.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatBRL(product.price)} · até {maxQuantity} no pedido
+                      </p>
+                    </div>
                     <button
                       type="button"
-                      disabled={quantity === 0}
-                      onClick={() => adjustQuantity(product, quantity - 1)}
-                      aria-label={`Remover uma unidade de ${product.name}`}
-                      className="w-9 h-9 bg-card rounded-lg flex items-center justify-center disabled:opacity-40"
+                      disabled={cannotAdd}
+                      onClick={() =>
+                        product.hasVariants
+                          ? setChoosingVariantFor(
+                              choosingVariantFor === product.id ? null : product.id,
+                            )
+                          : addLine(product)
+                      }
+                      className="rounded-lg bg-primary text-primary-foreground px-3 py-2 text-sm font-bold disabled:opacity-40"
                     >
-                      <Minus className="w-4 h-4" />
-                    </button>
-                    <span className="w-8 text-center font-black">{quantity}</span>
-                    <button
-                      type="button"
-                      disabled={quantity >= maxQuantity}
-                      onClick={() => adjustQuantity(product, quantity + 1)}
-                      aria-label={`Adicionar uma unidade de ${product.name}`}
-                      className="w-9 h-9 bg-primary text-primary-foreground rounded-lg flex items-center justify-center disabled:opacity-40"
-                    >
-                      <Plus className="w-4 h-4" />
+                      Adicionar
                     </button>
                   </div>
+                  {choosingVariantFor === product.id && (
+                    <div className="flex flex-wrap gap-2 rounded-lg bg-muted p-2">
+                      {!product.variantSelectionRequired && (
+                        <button
+                          type="button"
+                          onClick={() => addLine(product)}
+                          className="rounded-lg bg-card border px-3 py-2 text-xs font-bold"
+                        >
+                          Sem {product.variantType?.toLowerCase()}
+                        </button>
+                      )}
+                      {product.variants
+                        .filter((variant) => variant.available)
+                        .map((variant) => (
+                          <button
+                            key={variant.id}
+                            type="button"
+                            onClick={() => addLine(product, variant.id)}
+                            className="rounded-lg bg-card border px-3 py-2 text-xs font-bold"
+                          >
+                            {variant.name}
+                          </button>
+                        ))}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -801,9 +1016,13 @@ function EditOrderModal({
             <button
               type="button"
               disabled={
-                pending || !cpfIsValid || requestedItems.length === 0 || productsQuery.isError
+                pending ||
+                !cpfIsValid ||
+                !variantsAreValid ||
+                requestedItems.length === 0 ||
+                productsQuery.isError
               }
-              onClick={() => onSubmit(requestedItems, cpf)}
+              onClick={() => onSubmit(requestedItems, cpf, observation.trim() || undefined)}
               className="px-5 py-3 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-40"
             >
               {pending ? "Salvando..." : "Salvar edição"}

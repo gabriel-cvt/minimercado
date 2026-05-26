@@ -23,10 +23,18 @@ import {
   type ApiClient,
   type ApiOrder,
   type ApiPaymentMethod,
+  type ApiProduct,
+  type ApiProductVariant,
 } from "@/lib/api";
 import { formatBRL, formatCPF, formatPhone, isValidCPF } from "@/lib/format";
 
 type Step = "cpf" | "register" | "products" | "success";
+type CartLine = {
+  key: string;
+  product: ApiProduct;
+  selectedVariant?: ApiProductVariant;
+  qty: number;
+};
 
 export function OrdersFlow() {
   const [step, setStep] = useState<Step>("cpf");
@@ -38,7 +46,9 @@ export function OrdersFlow() {
   const [showSummary, setShowSummary] = useState(false);
   const [payment, setPayment] = useState<ApiPaymentMethod | null>(null);
   const [placedOrder, setPlacedOrder] = useState<ApiOrder | null>(null);
-  const [cart, setCart] = useState<Record<number, number>>({});
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [variantTarget, setVariantTarget] = useState<ApiProduct | null>(null);
+  const [observation, setObservation] = useState("");
   const [currentCustomer, setCurrentCustomer] = useState<ApiClient | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const queryClient = useQueryClient();
@@ -48,22 +58,48 @@ export function OrdersFlow() {
   });
   const products = productsQuery.data?.content ?? [];
 
-  const cartItems = Object.entries(cart)
-    .map(([pid, qty]) => {
-      const p = products.find((x) => x.id === Number(pid))!;
-      return { ...p, qty };
-    })
-    .filter(Boolean);
-  const total = cartItems.reduce((s, i) => s + i.price * i.qty, 0);
-  const totalCount = cartItems.reduce((s, i) => s + i.qty, 0);
+  const total = cart.reduce((sum, line) => sum + line.product.price * line.qty, 0);
+  const totalCount = cart.reduce((sum, line) => sum + line.qty, 0);
 
-  const setQty = (productId: number, quantity: number) => {
+  const lineKey = (product: ApiProduct, variant?: ApiProductVariant) =>
+    `${product.id}:${variant?.id ?? "base"}`;
+
+  const quantityForProduct = (productId: number) =>
+    cart
+      .filter((line) => line.product.id === productId)
+      .reduce((totalQuantity, line) => totalQuantity + line.qty, 0);
+
+  const addLine = (product: ApiProduct, selectedVariant?: ApiProductVariant) => {
+    const key = lineKey(product, selectedVariant);
     setCart((current) => {
-      const next = { ...current };
-      if (quantity <= 0) delete next[productId];
-      else next[productId] = quantity;
-      return next;
+      const productQuantity = current
+        .filter((line) => line.product.id === product.id)
+        .reduce((sum, line) => sum + line.qty, 0);
+      if (productQuantity >= product.stockQuantity) return current;
+      const existing = current.find((line) => line.key === key);
+      if (existing) {
+        return current.map((line) => (line.key === key ? { ...line, qty: line.qty + 1 } : line));
+      }
+      return [...current, { key, product, selectedVariant, qty: 1 }];
     });
+  };
+
+  const removeOneFromProduct = (product: ApiProduct) => {
+    setCart((current) => {
+      const line = [...current].reverse().find((item) => item.product.id === product.id);
+      if (!line) return current;
+      return line.qty === 1
+        ? current.filter((item) => item.key !== line.key)
+        : current.map((item) => (item.key === line.key ? { ...item, qty: item.qty - 1 } : item));
+    });
+  };
+
+  const selectProduct = (product: ApiProduct) => {
+    if (product.hasVariants) {
+      setVariantTarget(product);
+      return;
+    }
+    addLine(product);
   };
 
   const handleCpf = async () => {
@@ -114,12 +150,18 @@ export function OrdersFlow() {
       const order = await createOrder({
         clienteCpf: currentCustomer.cpf,
         paymentMethod: payment,
-        items: cartItems.map((item) => ({ productId: item.id, quantity: item.qty })),
+        observation: observation.trim() || undefined,
+        items: cart.map((line) => ({
+          productId: line.product.id,
+          quantity: line.qty,
+          selectedVariantId: line.selectedVariant?.id,
+        })),
       });
       setPlacedOrder(order);
       setShowSummary(false);
       setPayment(null);
-      setCart({});
+      setCart([]);
+      setObservation("");
       await queryClient.invalidateQueries({ queryKey: ["products"] });
       await queryClient.invalidateQueries({ queryKey: ["orders"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -138,7 +180,8 @@ export function OrdersFlow() {
     setPhoneNumber("");
     setError("");
     setPlacedOrder(null);
-    setCart({});
+    setCart([]);
+    setObservation("");
     setCurrentCustomer(null);
   };
 
@@ -288,7 +331,11 @@ export function OrdersFlow() {
                 </div>
               )}
               {filtered.map((p) => {
-                const qty = cart[p.id] ?? 0;
+                const qty = quantityForProduct(p.id);
+                const availableVariants = p.variants.filter((variant) => variant.available);
+                const cannotAdd =
+                  qty >= p.stockQuantity ||
+                  (p.hasVariants && p.variantSelectionRequired && availableVariants.length === 0);
                 return (
                   <motion.div
                     key={p.id}
@@ -309,9 +356,15 @@ export function OrdersFlow() {
                     <div className="p-4">
                       <h3 className="font-bold text-lg leading-tight mb-1">{p.name}</h3>
                       <p className="text-2xl font-black text-primary mb-3">{formatBRL(p.price)}</p>
+                      {p.hasVariants && (
+                        <p className="text-xs font-semibold text-primary mb-2">
+                          Escolha {p.variantType?.toLowerCase()}
+                          {!p.variantSelectionRequired && " (opcional)"}
+                        </p>
+                      )}
                       <div className="flex items-center justify-between bg-muted rounded-xl p-1">
                         <button
-                          onClick={() => setQty(p.id, qty - 1)}
+                          onClick={() => removeOneFromProduct(p)}
                           disabled={qty === 0}
                           className="w-10 h-10 rounded-lg bg-white shadow-sm flex items-center justify-center hover:bg-primary hover:text-primary-foreground disabled:opacity-40 disabled:hover:bg-white disabled:hover:text-foreground transition-colors"
                           aria-label="Diminuir"
@@ -322,8 +375,8 @@ export function OrdersFlow() {
                           {qty}
                         </span>
                         <button
-                          onClick={() => setQty(p.id, qty + 1)}
-                          disabled={qty >= p.stockQuantity}
+                          onClick={() => selectProduct(p)}
+                          disabled={cannotAdd}
                           className="w-10 h-10 rounded-lg bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary-glow disabled:opacity-40 transition-colors"
                           aria-label="Adicionar"
                         >
@@ -428,22 +481,46 @@ export function OrdersFlow() {
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto p-6 space-y-3">
-                {cartItems.map((i) => (
-                  <div key={i.id} className="flex items-center gap-3">
-                    {i.urlImage ? (
-                      <img src={i.urlImage} alt="" className="w-16 h-16 rounded-xl object-cover" />
+                {cart.map((line) => (
+                  <div key={line.key} className="flex items-center gap-3">
+                    {line.product.urlImage ? (
+                      <img
+                        src={line.product.urlImage}
+                        alt=""
+                        className="w-16 h-16 rounded-xl object-cover"
+                      />
                     ) : (
                       <div className="w-16 h-16 rounded-xl bg-muted" />
                     )}
                     <div className="flex-1">
-                      <p className="font-bold">{i.name}</p>
+                      <p className="font-bold">{line.product.name}</p>
+                      {line.selectedVariant && (
+                        <p className="text-xs font-bold text-primary">
+                          {line.product.variantType}: {line.selectedVariant.name}
+                        </p>
+                      )}
                       <p className="text-sm text-muted-foreground">
-                        {i.qty} × {formatBRL(i.price)}
+                        {line.qty} × {formatBRL(line.product.price)}
                       </p>
                     </div>
-                    <p className="font-black">{formatBRL(i.qty * i.price)}</p>
+                    <p className="font-black">{formatBRL(line.qty * line.product.price)}</p>
                   </div>
                 ))}
+                <label className="block pt-3">
+                  <span className="text-sm font-semibold mb-2 block">
+                    Observação do pedido (opcional)
+                  </span>
+                  <textarea
+                    value={observation}
+                    onChange={(event) => setObservation(event.target.value.slice(0, 500))}
+                    placeholder="Ex: sem molho, retirar cebola..."
+                    rows={3}
+                    className="input min-h-24 resize-none"
+                  />
+                  <span className="block text-right text-xs text-muted-foreground">
+                    {observation.length}/500
+                  </span>
+                </label>
               </div>
               <div className="p-6 border-t bg-muted/40 space-y-4">
                 <div className="flex items-center justify-between">
@@ -481,8 +558,86 @@ export function OrdersFlow() {
             </motion.div>
           </motion.div>
         )}
+        {variantTarget && (
+          <VariantSelectionModal
+            product={variantTarget}
+            onClose={() => setVariantTarget(null)}
+            onSelect={(variant) => {
+              addLine(variantTarget, variant);
+              setVariantTarget(null);
+            }}
+          />
+        )}
       </AnimatePresence>
     </div>
+  );
+}
+
+function VariantSelectionModal({
+  product,
+  onClose,
+  onSelect,
+}: {
+  product: ApiProduct;
+  onClose: () => void;
+  onSelect: (variant?: ApiProductVariant) => void;
+}) {
+  const availableVariants = product.variants.filter((variant) => variant.available);
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-foreground/60 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-6"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ y: 50 }}
+        animate={{ y: 0 }}
+        exit={{ y: 50 }}
+        onClick={(event) => event.stopPropagation()}
+        className="bg-card w-full max-w-md rounded-t-3xl md:rounded-3xl p-6 shadow-elegant"
+      >
+        <div className="flex justify-between gap-4 mb-5">
+          <div>
+            <h2 className="text-xl font-black">{product.name}</h2>
+            <p className="text-sm text-muted-foreground">
+              Selecione {product.variantType?.toLowerCase()}
+              {!product.variantSelectionRequired && " (opcional)"}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="w-9 h-9 rounded-full bg-muted">
+            <X className="w-4 h-4 mx-auto" />
+          </button>
+        </div>
+        <div className="space-y-2">
+          {!product.variantSelectionRequired && (
+            <button
+              type="button"
+              onClick={() => onSelect()}
+              className="w-full rounded-xl border p-4 text-left font-bold hover:border-primary hover:bg-primary/5"
+            >
+              Sem escolha
+            </button>
+          )}
+          {availableVariants.map((variant) => (
+            <button
+              key={variant.id}
+              type="button"
+              onClick={() => onSelect(variant)}
+              className="w-full rounded-xl border p-4 text-left font-bold hover:border-primary hover:bg-primary/5"
+            >
+              {variant.name}
+            </button>
+          ))}
+          {availableVariants.length === 0 && product.variantSelectionRequired && (
+            <p className="rounded-xl bg-destructive/10 p-4 text-sm font-semibold text-destructive">
+              Nenhuma opção disponível no momento.
+            </p>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }
 

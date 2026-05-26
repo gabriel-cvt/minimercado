@@ -2,6 +2,7 @@ export interface KitchenOrderItem {
   productId: number;
   productName: string;
   quantity: number;
+  selectedVariantName?: string | null;
 }
 
 export type KitchenOrderEventType = "CREATED" | "UPDATED" | "CANCELLED";
@@ -10,6 +11,7 @@ export interface KitchenOrderEvent {
   orderId: number;
   type: KitchenOrderEventType;
   items: KitchenOrderItem[];
+  observation?: string | null;
 }
 
 export interface PickupOrderEvent {
