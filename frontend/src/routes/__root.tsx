@@ -24,7 +24,10 @@ function NotFoundComponent() {
           A página que você procura não existe ou foi movida.
         </p>
         <div className="mt-6">
-          <Link to="/" className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+          <Link
+            to="/"
+            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
             Voltar ao início
           </Link>
         </div>
@@ -40,8 +43,12 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">Esta página não carregou</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Algo deu errado. Tente novamente ou volte para o início.</p>
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">
+          Esta página não carregou
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Algo deu errado. Tente novamente ou volte para o início.
+        </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
@@ -52,7 +59,10 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
           >
             Tentar novamente
           </button>
-          <a href="/" className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent">
+          <a
+            href="/"
+            className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+          >
             Início
           </a>
         </div>
@@ -67,10 +77,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "McDominus — Sistema de Gerenciamento de Pedidos" },
-      { name: "description", content: "Plataforma moderna de autoatendimento e operação de cozinhas." },
+      {
+        name: "description",
+        content: "Plataforma moderna de autoatendimento e operação de cozinhas.",
+      },
       { name: "author", content: "Lovable" },
       { property: "og:title", content: "McDominus — Sistema de Gerenciamento de Pedidos" },
-      { property: "og:description", content: "Plataforma moderna de autoatendimento e operação de cozinhas." },
+      {
+        property: "og:description",
+        content: "Plataforma moderna de autoatendimento e operação de cozinhas.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
@@ -109,14 +125,20 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <WebSocketProvider>
+      <WebSocketProvider pathname={path}>
         <div className="min-h-screen flex flex-col">
           {!isDisplay && <Header />}
           <main className="flex-1">
             <Outlet />
           </main>
         </div>
-        <Toaster position="top-right" richColors closeButton />
+        <Toaster
+          position="bottom-right"
+          richColors
+          closeButton
+          duration={3_000}
+          visibleToasts={3}
+        />
       </WebSocketProvider>
     </QueryClientProvider>
   );

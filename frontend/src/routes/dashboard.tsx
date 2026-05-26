@@ -23,7 +23,6 @@ import {
   DollarSign,
   Flame,
   Package,
-  QrCode,
   Search,
   ShoppingBag,
   XCircle,
@@ -35,7 +34,6 @@ import {
   getOrders,
   markOrderPaid,
   type ApiOrder,
-  type ApiPaymentMethod,
 } from "@/lib/api";
 import { formatBRL, formatCPF, formatDateTime } from "@/lib/format";
 import { useOrdersSocket } from "@/websocket/websocket-hooks";
@@ -51,7 +49,6 @@ function DashboardPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [pendingTarget, setPendingTarget] = useState<PendingCustomer | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<Exclude<ApiPaymentMethod, "PENDING">>("PIX");
   const summaryQuery = useQuery({
     queryKey: ["dashboard", "summary"],
     queryFn: getDashboardSummary,
@@ -70,13 +67,7 @@ function DashboardPage() {
   }, [queryClient]);
   useOrdersSocket(refresh);
   const paymentMutation = useMutation({
-    mutationFn: ({
-      orderIds,
-      method,
-    }: {
-      orderIds: number[];
-      method: Exclude<ApiPaymentMethod, "PENDING">;
-    }) => Promise.all(orderIds.map((id) => markOrderPaid(id, method))),
+    mutationFn: (orderIds: number[]) => Promise.all(orderIds.map((id) => markOrderPaid(id))),
     onSuccess: async (paidOrders) => {
       await queryClient.invalidateQueries({ queryKey: ["orders"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -87,6 +78,10 @@ function DashboardPage() {
       );
       setPendingTarget(null);
     },
+    onError: () =>
+      toast.error("Não foi possível confirmar os pagamentos pendentes.", {
+        duration: Infinity,
+      }),
   });
 
   const summary = summaryQuery.data;
@@ -380,18 +375,9 @@ function DashboardPage() {
                 {pendingTarget.name} possui {pendingTarget.count} pedido(s) pendente(s), no valor
                 total de {formatBRL(pendingTarget.amount)}.
               </p>
-              <div className="grid grid-cols-2 gap-3 mb-5">
-                <PaymentOption
-                  method="PIX"
-                  selected={paymentMethod === "PIX"}
-                  onSelect={setPaymentMethod}
-                />
-                <PaymentOption
-                  method="DINHEIRO"
-                  selected={paymentMethod === "DINHEIRO"}
-                  onSelect={setPaymentMethod}
-                />
-              </div>
+              <p className="rounded-xl bg-muted px-4 py-3 text-sm font-semibold mb-5">
+                A confirmação preservará a forma de pagamento informada em cada pedido.
+              </p>
               <div className="flex gap-3">
                 <button
                   onClick={() => setPendingTarget(null)}
@@ -400,12 +386,7 @@ function DashboardPage() {
                   Cancelar
                 </button>
                 <button
-                  onClick={() =>
-                    paymentMutation.mutate({
-                      orderIds: pendingTarget.orderIds,
-                      method: paymentMethod,
-                    })
-                  }
+                  onClick={() => paymentMutation.mutate(pendingTarget.orderIds)}
                   disabled={paymentMutation.isPending}
                   className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-50"
                 >
@@ -483,26 +464,6 @@ function Panel({
       <h3 className="font-black text-lg mb-4">{title}</h3>
       {children}
     </div>
-  );
-}
-
-function PaymentOption({
-  method,
-  selected,
-  onSelect,
-}: {
-  method: Exclude<ApiPaymentMethod, "PENDING">;
-  selected: boolean;
-  onSelect: (method: Exclude<ApiPaymentMethod, "PENDING">) => void;
-}) {
-  const Icon = method === "PIX" ? QrCode : Banknote;
-  return (
-    <button
-      onClick={() => onSelect(method)}
-      className={`p-4 rounded-xl border-2 font-bold flex flex-col items-center gap-2 transition-colors ${selected ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40"}`}
-    >
-      <Icon className="w-6 h-6" /> {method === "PIX" ? "PIX" : "Dinheiro"}
-    </button>
   );
 }
 

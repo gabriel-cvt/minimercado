@@ -110,12 +110,18 @@ export function ProductsManagement() {
       setShowCreate(false);
       toast.success("Produto cadastrado com sucesso");
     },
-    onError: () => toast.error("Não foi possível cadastrar o produto"),
+    onError: () =>
+      toast.error("Não foi possível cadastrar o produto", {
+        duration: Infinity,
+      }),
   });
   const detailMutation = useMutation({
     mutationFn: getProduct,
     onSuccess: (product) => setEditTarget(product),
-    onError: () => toast.error("Não foi possível carregar o produto"),
+    onError: () =>
+      toast.error("Não foi possível carregar o produto", {
+        duration: Infinity,
+      }),
   });
   const editMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: EditFormData }) =>
@@ -129,7 +135,10 @@ export function ProductsManagement() {
       setEditTarget(null);
       toast.success("Produto atualizado com sucesso");
     },
-    onError: () => toast.error("Não foi possível atualizar o produto"),
+    onError: () =>
+      toast.error("Não foi possível atualizar o produto", {
+        duration: Infinity,
+      }),
   });
   const stockMutation = useMutation({
     mutationFn: ({ id, quantityChange }: { id: number; quantityChange: number }) =>
@@ -139,16 +148,22 @@ export function ProductsManagement() {
       setStockTarget(null);
       toast.success("Estoque atualizado com sucesso");
     },
-    onError: () => toast.error("Não foi possível ajustar o estoque"),
+    onError: () =>
+      toast.error("Não foi possível ajustar o estoque", {
+        duration: Infinity,
+      }),
   });
   const deleteMutation = useMutation({
     mutationFn: (id: number) => removeProduct(id),
     onSuccess: async () => {
       await refreshProducts();
       setDeleteTarget(null);
-      toast.success("Produto removido com sucesso");
+      toast.success("Produto removido do catálogo com sucesso");
     },
-    onError: () => toast.error("Não foi possível remover o produto"),
+    onError: () =>
+      toast.error("Não foi possível remover o produto", {
+        duration: Infinity,
+      }),
   });
 
   function submitSearch(event: FormEvent) {
@@ -696,7 +711,7 @@ function DeleteModal({
   return (
     <Modal
       title="Remover produto"
-      subtitle="Esta ação não pode ser desfeita."
+      subtitle="O produto sairá do catálogo, preservando pedidos anteriores."
       onClose={onClose}
       narrow
     >

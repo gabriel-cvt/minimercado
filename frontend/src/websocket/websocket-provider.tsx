@@ -3,14 +3,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Wifi, WifiOff, Loader2, AlertTriangle } from "lucide-react";
 import { websocketService } from "./websocket-client";
 import { useWebSocketStatus } from "./websocket-hooks";
-import {
-  useKitchenOrderToast,
-  usePickupOrderToast,
-} from "./websocket-events";
-import {
-  useKitchenOrdersSocket,
-  usePickupOrdersSocket,
-} from "./websocket-hooks";
+import { useKitchenOrderToast, usePickupOrderToast } from "./websocket-events";
+import { useKitchenOrdersSocket, usePickupOrdersSocket } from "./websocket-hooks";
 import type { ConnectionStatus } from "./websocket-types";
 
 const WebSocketContext = createContext<{ enabled: boolean }>({ enabled: true });
@@ -19,7 +13,13 @@ export function useWebSocketContext() {
   return useContext(WebSocketContext);
 }
 
-export function WebSocketProvider({ children }: { children: ReactNode }) {
+export function WebSocketProvider({
+  children,
+  pathname,
+}: {
+  children: ReactNode;
+  pathname: string;
+}) {
   useEffect(() => {
     void websocketService.connect();
     return () => {
@@ -27,10 +27,10 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Global toast bridge — events are already delivered to per-page subscribers,
-  // these listeners add app-wide toasts + cache invalidations.
-  const onKitchen = useKitchenOrderToast();
-  const onPickup = usePickupOrderToast();
+  // Events also reach page listeners; this bridge invalidates shared data and
+  // only notifies when the current screen has no contextual feedback.
+  const onKitchen = useKitchenOrderToast(pathname);
+  const onPickup = usePickupOrderToast(pathname);
   useKitchenOrdersSocket(onKitchen);
   usePickupOrdersSocket(onPickup);
 
@@ -47,11 +47,36 @@ const statusMap: Record<
   { label: string; cls: string; Icon: typeof Wifi; pulse: boolean }
 > = {
   idle: { label: "Aguardando", cls: "bg-muted text-muted-foreground", Icon: Loader2, pulse: false },
-  connecting: { label: "Conectando", cls: "bg-amber-500/15 text-amber-600", Icon: Loader2, pulse: true },
-  connected: { label: "Conectado", cls: "bg-emerald-500/15 text-emerald-600", Icon: Wifi, pulse: false },
-  reconnecting: { label: "Reconectando", cls: "bg-amber-500/15 text-amber-600", Icon: Loader2, pulse: true },
-  disconnected: { label: "Desconectado", cls: "bg-muted text-muted-foreground", Icon: WifiOff, pulse: false },
-  error: { label: "Erro de conexão", cls: "bg-destructive/15 text-destructive", Icon: AlertTriangle, pulse: true },
+  connecting: {
+    label: "Conectando",
+    cls: "bg-amber-500/15 text-amber-600",
+    Icon: Loader2,
+    pulse: true,
+  },
+  connected: {
+    label: "Conectado",
+    cls: "bg-emerald-500/15 text-emerald-600",
+    Icon: Wifi,
+    pulse: false,
+  },
+  reconnecting: {
+    label: "Reconectando",
+    cls: "bg-amber-500/15 text-amber-600",
+    Icon: Loader2,
+    pulse: true,
+  },
+  disconnected: {
+    label: "Desconectado",
+    cls: "bg-muted text-muted-foreground",
+    Icon: WifiOff,
+    pulse: false,
+  },
+  error: {
+    label: "Erro de conexão",
+    cls: "bg-destructive/15 text-destructive",
+    Icon: AlertTriangle,
+    pulse: true,
+  },
 };
 
 export function ConnectionStatusIndicator() {

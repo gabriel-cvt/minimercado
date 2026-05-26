@@ -12,7 +12,6 @@ import {
   X,
   CreditCard,
   Banknote,
-  Clock,
   Sparkles,
 } from "lucide-react";
 import {
@@ -388,7 +387,8 @@ export function OrdersFlow() {
               <div className="bg-muted rounded-2xl p-5 mb-6 space-y-2 text-left">
                 <Row label="Pedido nº" value={`#${placedOrder.id}`} />
                 <Row label="Total" value={formatBRL(placedOrder.totalValue)} />
-                <Row label="Pagamento" value={paymentLabel(placedOrder.paymentMethod)} />
+                <Row label="Forma de pagamento" value={paymentLabel(placedOrder.paymentMethod)} />
+                <Row label="Status do pagamento" value="Pendente" />
                 <Row label="Tempo estimado" value="~10 min" />
               </div>
               <button
@@ -452,11 +452,13 @@ export function OrdersFlow() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold mb-2">Forma de pagamento</p>
-                  <div className="grid grid-cols-3 gap-2">
+                  <p className="text-xs text-muted-foreground mb-3">
+                    O pagamento será confirmado pela equipe após o recebimento.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
                     {[
                       { v: "PIX" as const, label: "PIX", Icon: Sparkles },
                       { v: "DINHEIRO" as const, label: "Dinheiro", Icon: Banknote },
-                      { v: "PENDING" as const, label: "Pendente", Icon: Clock },
                     ].map(({ v, label, Icon }) => (
                       <button
                         key={v}
@@ -493,6 +495,6 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function paymentLabel(p: ApiPaymentMethod) {
-  return p === "PIX" ? "PIX" : p === "DINHEIRO" ? "Dinheiro" : "Pendente";
+function paymentLabel(p: ApiPaymentMethod | null) {
+  return p === "PIX" ? "PIX" : p === "DINHEIRO" ? "Dinheiro" : "Não informada";
 }

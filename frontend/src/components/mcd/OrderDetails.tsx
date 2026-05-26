@@ -35,6 +35,10 @@ import {
 import { formatBRL, formatCPF, formatTime, isValidCPF } from "@/lib/format";
 import type { ApiOrderStatus, OrderRealtimeEvent } from "@/websocket/websocket-types";
 import { useOrdersSocket } from "@/websocket/websocket-hooks";
+import {
+  clearSuppressedRealtimeToast,
+  suppressNextRealtimeToast,
+} from "@/websocket/websocket-events";
 
 const statusConfig: Record<
   ApiOrderStatus,
@@ -74,7 +78,7 @@ export function OrderDetails() {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [editTarget, setEditTarget] = useState<ApiOrder | null>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<Exclude<ApiPaymentMethod, "PENDING">>("PIX");
+  const [paymentMethod, setPaymentMethod] = useState<ApiPaymentMethod>("PIX");
   const [, force] = useState(0);
   const ordersQuery = useQuery({
     queryKey: ["orders", "details"],
@@ -124,10 +128,13 @@ export function OrderDetails() {
       toast.success(`Pedido #${order.id} finalizado`);
       setConfirmFinish(false);
     },
-    onError: (error) => toast.error(actionError(error, "Não foi possível finalizar o pedido.")),
+    onError: (error) =>
+      toast.error(actionError(error, "Não foi possível finalizar o pedido."), {
+        duration: Infinity,
+      }),
   });
   const paymentMutation = useMutation({
-    mutationFn: ({ id, method }: { id: number; method: Exclude<ApiPaymentMethod, "PENDING"> }) =>
+    mutationFn: ({ id, method }: { id: number; method: ApiPaymentMethod }) =>
       markOrderPaid(id, method),
     onSuccess: async (order) => {
       queryClient.setQueryData(["orders", "detail", order.id], order);
@@ -136,7 +143,10 @@ export function OrderDetails() {
       toast.success(`Pagamento do pedido #${order.id} confirmado`);
       setConfirmPayment(false);
     },
-    onError: (error) => toast.error(actionError(error, "Não foi possível confirmar o pagamento.")),
+    onError: (error) =>
+      toast.error(actionError(error, "Não foi possível confirmar o pagamento."), {
+        duration: Infinity,
+      }),
   });
   const editMutation = useMutation({
     mutationFn: ({
@@ -147,7 +157,10 @@ export function OrderDetails() {
       order: ApiOrder;
       items: { productId: number; quantity: number }[];
       clienteCpf: string;
-    }) => updateOrder(order.id, { items, clienteCpf }),
+    }) => {
+      suppressNextRealtimeToast(order.id, "kitchen:UPDATED");
+      return updateOrder(order.id, { items, clienteCpf });
+    },
     onSuccess: async (updated, variables) => {
       queryClient.setQueryData(["orders", "detail", updated.id], updated);
       await queryClient.invalidateQueries({ queryKey: ["orders"] });
@@ -160,13 +173,19 @@ export function OrderDetails() {
       );
       setEditTarget(null);
     },
-    onError: async (error) => {
+    onError: async (error, variables) => {
+      clearSuppressedRealtimeToast(variables.order.id, "kitchen:UPDATED");
       await queryClient.invalidateQueries({ queryKey: ["orders"] });
-      toast.error(actionError(error, "Não foi possível editar o pedido."));
+      toast.error(actionError(error, "Não foi possível editar o pedido."), {
+        duration: Infinity,
+      });
     },
   });
   const cancelMutation = useMutation({
-    mutationFn: cancelOrder,
+    mutationFn: (id: number) => {
+      suppressNextRealtimeToast(id, "kitchen:CANCELLED");
+      return cancelOrder(id);
+    },
     onSuccess: async (order) => {
       queryClient.setQueryData(["orders", "detail", order.id], order);
       await queryClient.invalidateQueries({ queryKey: ["orders"] });
@@ -175,9 +194,12 @@ export function OrderDetails() {
       toast.success(`Pedido #${order.id} cancelado e estoque devolvido`);
       setConfirmCancel(false);
     },
-    onError: async (error) => {
+    onError: async (error, id) => {
+      clearSuppressedRealtimeToast(id, "kitchen:CANCELLED");
       await queryClient.invalidateQueries({ queryKey: ["orders"] });
-      toast.error(actionError(error, "Não foi possível cancelar o pedido."));
+      toast.error(actionError(error, "Não foi possível cancelar o pedido."), {
+        duration: Infinity,
+      });
     },
   });
 
@@ -294,6 +316,7 @@ export function OrderDetails() {
                   }}
                   onPay={() => {
                     setActionsOpen(false);
+                    setPaymentMethod(selected.paymentMethod === "DINHEIRO" ? "DINHEIRO" : "PIX");
                     setConfirmPayment(true);
                   }}
                   onFinish={() => {
@@ -390,7 +413,9 @@ export function OrderDetails() {
               <CheckCircle2 className="w-14 h-14 mx-auto mb-4 text-status-finished" />
               <h3 className="text-xl font-black mb-2">Finalizar pedido #{selected.id}?</h3>
               <p className="text-muted-foreground text-sm mb-5">
-                O pedido será encerrado após a retirada.
+                {selected.paymentStatus === "PENDING"
+                  ? "O pedido será retirado e continuará como pagamento pendente no dashboard."
+                  : "O pedido será encerrado após a retirada."}
               </p>
               <div className="flex gap-3">
                 <button
@@ -795,9 +820,9 @@ function PaymentMethodButton({
   selected,
   onSelect,
 }: {
-  method: Exclude<ApiPaymentMethod, "PENDING">;
+  method: ApiPaymentMethod;
   selected: boolean;
-  onSelect: (method: Exclude<ApiPaymentMethod, "PENDING">) => void;
+  onSelect: (method: ApiPaymentMethod) => void;
 }) {
   const Icon = method === "PIX" ? QrCode : Banknote;
   return (
@@ -871,13 +896,17 @@ function fmtElapsed(seconds: number) {
   return minutes > 0 ? `${minutes}m ${remaining}s` : `${remaining}s`;
 }
 
-function paymentLabel(paymentMethod: string) {
-  return paymentMethod === "PIX" ? "PIX" : paymentMethod === "DINHEIRO" ? "Dinheiro" : "Pendente";
+function paymentLabel(paymentMethod: ApiPaymentMethod | null) {
+  return paymentMethod === "PIX"
+    ? "PIX"
+    : paymentMethod === "DINHEIRO"
+      ? "Dinheiro"
+      : "Não informado";
 }
 
 function paymentStatusLabel(order: ApiOrder) {
   if (order.paymentStatus === "CANCELLED") return "Pagamento cancelado";
-  if (order.paymentStatus === "PENDING") return "Pagamento pendente";
+  if (order.paymentStatus === "PENDING") return `Pendente - ${paymentLabel(order.paymentMethod)}`;
   return `Pago - ${paymentLabel(order.paymentMethod)}`;
 }
 

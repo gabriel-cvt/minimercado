@@ -5,9 +5,23 @@ type Listener<T> = (payload: T, raw: IMessage) => void;
 type StatusListener = (status: ConnectionStatus, attempts: number) => void;
 
 const API_BASE_URL = import.meta.env?.VITE_API_URL?.replace(/\/$/, "");
-const WS_URL =
-  import.meta.env?.VITE_WS_URL ||
-  (API_BASE_URL ? `${API_BASE_URL}/ws` : "http://localhost:8080/ws");
+const WS_URL = resolveSockJsUrl(import.meta.env?.VITE_WS_URL, API_BASE_URL);
+
+function resolveSockJsUrl(configuredUrl: string | undefined, apiBaseUrl: string | undefined) {
+  const backendBaseUrl = apiBaseUrl || "http://localhost:8080";
+  const value = configuredUrl?.trim();
+
+  if (!value) return `${backendBaseUrl}/ws`;
+
+  if (/^https?:\/\//i.test(value)) return value;
+
+  // SockJS receives an HTTP endpoint and upgrades transports internally.
+  if (/^wss?:\/\//i.test(value)) return value.replace(/^ws/i, "http");
+
+  if (value.startsWith("/")) return `${backendBaseUrl}${value}`;
+
+  return `${new URL(backendBaseUrl).protocol}//${value}`;
+}
 
 class WebSocketService {
   private client: Client | null = null;

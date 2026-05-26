@@ -2,7 +2,7 @@ import type { ApiOrderStatus, ApiPaymentStatus } from "@/websocket/websocket-typ
 
 const API_BASE_URL = import.meta.env?.VITE_API_URL || "http://localhost:8080";
 
-export type ApiPaymentMethod = "PIX" | "DINHEIRO" | "PENDING";
+export type ApiPaymentMethod = "PIX" | "DINHEIRO";
 
 export interface ApiClient {
   id: number;
@@ -38,7 +38,7 @@ export interface ApiOrder {
   paymentStatus: ApiPaymentStatus;
   items: ApiOrderItem[];
   client: ApiClient;
-  paymentMethod: ApiPaymentMethod;
+  paymentMethod: ApiPaymentMethod | null;
   totalValue: number;
 }
 
@@ -258,10 +258,10 @@ export function finishOrder(id: number) {
   return request<ApiOrder>(`/api/orders/${id}/finish`, { method: "PATCH" });
 }
 
-export function markOrderPaid(id: number, paymentMethod: Exclude<ApiPaymentMethod, "PENDING">) {
+export function markOrderPaid(id: number, paymentMethod?: ApiPaymentMethod) {
   return request<ApiOrder>(`/api/orders/${id}/pay`, {
     method: "PATCH",
-    body: JSON.stringify({ paymentMethod }),
+    body: paymentMethod ? JSON.stringify({ paymentMethod }) : undefined,
   });
 }
 

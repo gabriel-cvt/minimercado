@@ -14,7 +14,7 @@ import {
   WifiOff,
   XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   getKitchenPendingOrders,
@@ -37,6 +37,10 @@ import type {
   KitchenOrderItem,
   OrderRealtimeEvent,
 } from "@/websocket/websocket-types";
+import {
+  clearSuppressedRealtimeToast,
+  suppressNextRealtimeToast,
+} from "@/websocket/websocket-events";
 
 export const Route = createFileRoute("/cozinha")({
   head: () => ({ meta: [{ title: "Cozinha — McDominus" }] }),
@@ -61,6 +65,11 @@ interface KitchenQueueOrder {
   source: "api" | "websocket";
   lastUpdate: number;
 }
+
+type HighlightedOrder = {
+  id: number;
+  label: "Novo" | "Atualizado";
+};
 
 const connectionConfig: Record<
   ConnectionStatus,
@@ -92,6 +101,8 @@ function KitchenPage() {
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [lastEvent, setLastEvent] = useState<string>("Aguardando eventos");
+  const [highlightedOrder, setHighlightedOrder] = useState<HighlightedOrder | null>(null);
+  const highlightTimer = useRef<number | null>(null);
   const [, setTick] = useState(0);
   const { status } = useWebSocketStatus();
 
@@ -115,6 +126,19 @@ function KitchenPage() {
   useEffect(() => {
     const interval = window.setInterval(() => setTick((value) => value + 1), 1000);
     return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (highlightTimer.current !== null) window.clearTimeout(highlightTimer.current);
+    },
+    [],
+  );
+
+  const highlight = useCallback((id: number, label: HighlightedOrder["label"]) => {
+    if (highlightTimer.current !== null) window.clearTimeout(highlightTimer.current);
+    setHighlightedOrder({ id, label });
+    highlightTimer.current = window.setTimeout(() => setHighlightedOrder(null), 4_000);
   }, []);
 
   const removeOrder = useCallback((orderId: number) => {
@@ -146,9 +170,10 @@ function KitchenPage() {
         removeOrder(event.orderId);
         return;
       }
+      highlight(event.orderId, event.type === "CREATED" ? "Novo" : "Atualizado");
       void fetchAndUpsert(event.orderId, event);
     },
-    [fetchAndUpsert, removeOrder],
+    [fetchAndUpsert, highlight, removeOrder],
   );
 
   const handleOrderEvent = useCallback(
@@ -164,10 +189,11 @@ function KitchenPage() {
         return;
       }
       if (event.type === "ORDER_CREATED" || event.type === "ORDER_UPDATED") {
+        highlight(event.orderId, event.type === "ORDER_CREATED" ? "Novo" : "Atualizado");
         void fetchAndUpsert(event.orderId);
       }
     },
-    [fetchAndUpsert, removeOrder],
+    [fetchAndUpsert, highlight, removeOrder],
   );
 
   const handlePickupEvent = useCallback(
@@ -198,14 +224,18 @@ function KitchenPage() {
   const handleReady = async (order: KitchenQueueOrder) => {
     setUpdatingId(order.id);
     try {
+      suppressNextRealtimeToast(order.id, "pickup");
       await markOrderReady(order.id);
       removeOrder(order.id);
       toast.success(`Pedido #${order.id} pronto para retirada`, {
         description: "A retirada receberá a atualização em tempo real.",
+        duration: 2_800,
       });
     } catch (err) {
+      clearSuppressedRealtimeToast(order.id, "pickup");
       toast.error(`Não foi possível marcar o pedido #${order.id} como pronto`, {
         description: err instanceof Error ? err.message : "Tente novamente em instantes.",
+        duration: Infinity,
       });
     } finally {
       setUpdatingId(null);
@@ -321,6 +351,7 @@ function KitchenPage() {
                   key={order.id}
                   order={order}
                   busy={updatingId === order.id}
+                  highlight={highlightedOrder?.id === order.id ? highlightedOrder.label : undefined}
                   onReady={() => void handleReady(order)}
                 />
               ))}
@@ -335,10 +366,12 @@ function KitchenPage() {
 function KitchenOrderCard({
   order,
   busy,
+  highlight,
   onReady,
 }: {
   order: KitchenQueueOrder;
   busy: boolean;
+  highlight?: HighlightedOrder["label"];
   onReady: () => void;
 }) {
   const elapsedMs = Date.now() - order.createdAt;
@@ -351,14 +384,21 @@ function KitchenOrderCard({
       initial={{ opacity: 0, y: 16, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, scale: 0.96 }}
-      className={`rounded-2xl border bg-card shadow-card overflow-hidden ${isLate ? "border-destructive/30" : ""}`}
+      className={`rounded-2xl border bg-card shadow-card overflow-hidden transition-shadow ${highlight ? "ring-2 ring-primary shadow-elegant" : ""} ${isLate ? "border-destructive/30" : ""}`}
     >
       <div className="p-5 border-b bg-muted/35">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">
-              Pedido
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">
+                Pedido
+              </p>
+              {highlight && (
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-black uppercase text-primary">
+                  {highlight}
+                </span>
+              )}
+            </div>
             <h2 className="text-4xl font-black tabular-nums">#{order.id}</h2>
             <p className="text-sm font-semibold text-muted-foreground truncate max-w-[15rem]">
               {order.customerName}
