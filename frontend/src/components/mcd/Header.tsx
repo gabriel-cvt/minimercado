@@ -1,11 +1,12 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, ShoppingBag, BarChart3, Tv, Menu, X, ChefHat } from "lucide-react";
+import { Home, ShoppingBag, BarChart3, Tv, Menu, X, ChefHat, Package } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const tabs = [
   { to: "/", label: "Início", icon: Home },
   { to: "/orders", label: "Pedidos", icon: ShoppingBag },
+  { to: "/produtos", label: "Produtos", icon: Package },
   { to: "/cozinha", label: "Cozinha", icon: ChefHat },
   { to: "/dashboard", label: "Dashboard", icon: BarChart3 },
 ] as const;
@@ -31,7 +32,7 @@ export function Header() {
           </div>
         </Link>
 
-        <nav className="hidden md:flex items-center gap-1">
+        <nav className="hidden lg:flex items-center gap-1">
           {tabs.map((t) => {
             const active = path === t.to;
             const Icon = t.icon;
@@ -64,7 +65,7 @@ export function Header() {
 
         <button
           onClick={() => setOpen(!open)}
-          className="md:hidden w-10 h-10 rounded-xl bg-muted flex items-center justify-center"
+          className="lg:hidden w-10 h-10 rounded-xl bg-muted flex items-center justify-center"
           aria-label="Menu"
         >
           {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -77,7 +78,7 @@ export function Header() {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="md:hidden overflow-hidden border-t bg-white"
+            className="lg:hidden overflow-hidden border-t bg-white"
           >
             <div className="px-4 py-3 flex flex-col gap-1">
               {tabs.map((t) => {

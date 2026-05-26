@@ -4,9 +4,10 @@ import type { ConnectionStatus } from "./websocket-types";
 type Listener<T> = (payload: T, raw: IMessage) => void;
 type StatusListener = (status: ConnectionStatus, attempts: number) => void;
 
+const API_BASE_URL = import.meta.env?.VITE_API_URL?.replace(/\/$/, "");
 const WS_URL =
-  (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_WS_URL) ||
-  "http://localhost:8080/ws";
+  import.meta.env?.VITE_WS_URL ||
+  (API_BASE_URL ? `${API_BASE_URL}/ws` : "http://localhost:8080/ws");
 
 class WebSocketService {
   private client: Client | null = null;

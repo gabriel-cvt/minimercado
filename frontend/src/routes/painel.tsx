@@ -14,7 +14,7 @@ export const Route = createFileRoute("/painel")({
 async function getDisplayOrders() {
   const [preparing, ready] = await Promise.all([
     getOrders({ status: "PENDING", size: 100, sort: "orderTime,asc" }),
-    getOrders({ status: "READY_FOR_PICKUP", size: 100, sort: "orderTime,asc" }),
+    getOrders({ status: "READY_FOR_PICKUP", size: 100, sort: "readyAt,asc" }),
   ]);
   return { preparing: preparing.content, ready: ready.content };
 }
@@ -35,7 +35,10 @@ function DisplayPage() {
   usePublicOrdersSocket(refresh);
 
   const preparing = ordersQuery.data?.preparing ?? [];
-  const ready = ordersQuery.data?.ready ?? [];
+  const ready = (ordersQuery.data?.ready ?? []).filter(
+    (order) =>
+      order.readyAt === null || time.getTime() - new Date(order.readyAt).getTime() < 300_000,
+  );
 
   return (
     <div className="min-h-screen bg-foreground text-background">

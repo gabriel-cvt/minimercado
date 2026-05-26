@@ -30,6 +30,10 @@ export interface ApiOrderItem {
 export interface ApiOrder {
   id: number;
   orderTime: string;
+  readyAt: string | null;
+  finishedAt: string | null;
+  paidAt: string | null;
+  cancelledAt: string | null;
   status: ApiOrderStatus;
   paymentStatus: ApiPaymentStatus;
   items: ApiOrderItem[];
@@ -46,6 +50,28 @@ export interface ApiDashboardSummary {
   readyForPickupOrders: number;
   finishedToday: number;
   cancelledToday: number;
+  averagePreparationMinutes: number;
+}
+
+export interface ApiDashboardAnalytics {
+  days: number;
+  averagePreparationMinutes: number;
+  averageTicket: number;
+  paymentMethods: { paymentMethod: ApiPaymentMethod; ordersCount: number }[];
+  ordersByHour: { hour: number; ordersCount: number }[];
+  topClients: {
+    clientId: number;
+    name: string;
+    cpf: string;
+    ordersCount: number;
+    totalSpent: number;
+  }[];
+  topProducts: {
+    productId: number;
+    name: string;
+    quantitySold: number;
+    totalValue: number;
+  }[];
 }
 
 export interface Page<T> {
@@ -137,6 +163,35 @@ export function createProduct(data: {
   });
 }
 
+export function getProduct(id: number) {
+  return request<ApiProduct>(`/api/products/${id}`);
+}
+
+export function updateProduct(
+  id: number,
+  data: {
+    name?: string;
+    price?: number;
+    urlImage?: string;
+  },
+) {
+  return request<ApiProduct>(`/api/products/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateProductStock(id: number, quantityChange: number) {
+  return request<ApiProduct>(`/api/products/${id}/stock`, {
+    method: "PATCH",
+    body: JSON.stringify({ quantityChange }),
+  });
+}
+
+export function removeProduct(id: number) {
+  return request<void>(`/api/products/${id}`, { method: "DELETE" });
+}
+
 export interface OrderFilters {
   status?: ApiOrderStatus;
   paymentStatus?: ApiPaymentStatus;
@@ -178,6 +233,23 @@ export function createOrder(data: {
   });
 }
 
+export function updateOrder(
+  id: number,
+  data: {
+    items: { productId: number; quantity: number }[];
+    clienteCpf: string;
+  },
+) {
+  return request<ApiOrder>(`/api/orders/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function cancelOrder(id: number) {
+  return request<ApiOrder>(`/api/orders/${id}/cancel`, { method: "PATCH" });
+}
+
 export function markOrderReady(id: number) {
   return request<ApiOrder>(`/api/orders/${id}/ready`, { method: "PATCH" });
 }
@@ -186,6 +258,17 @@ export function finishOrder(id: number) {
   return request<ApiOrder>(`/api/orders/${id}/finish`, { method: "PATCH" });
 }
 
+export function markOrderPaid(id: number, paymentMethod: Exclude<ApiPaymentMethod, "PENDING">) {
+  return request<ApiOrder>(`/api/orders/${id}/pay`, {
+    method: "PATCH",
+    body: JSON.stringify({ paymentMethod }),
+  });
+}
+
 export function getDashboardSummary() {
   return request<ApiDashboardSummary>("/api/dashboard/summary");
+}
+
+export function getDashboardAnalytics(days = 3) {
+  return request<ApiDashboardAnalytics>(`/api/dashboard/analytics${queryString({ days })}`);
 }

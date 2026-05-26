@@ -1,9 +1,38 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { ClipboardList, Clock, Flame, CheckCircle2, Package, ChefHat, XCircle } from "lucide-react";
-import { finishOrder, getOrder, getOrders, type ApiOrder } from "@/lib/api";
-import { formatBRL, formatTime } from "@/lib/format";
+import {
+  Ban,
+  Banknote,
+  ChevronDown,
+  ClipboardList,
+  Clock,
+  Flame,
+  CheckCircle2,
+  Minus,
+  Pencil,
+  Package,
+  Plus,
+  ChefHat,
+  QrCode,
+  Search,
+  XCircle,
+} from "lucide-react";
+import { toast } from "sonner";
+import {
+  ApiError,
+  cancelOrder,
+  finishOrder,
+  getOrder,
+  getOrders,
+  getProducts,
+  markOrderPaid,
+  updateOrder,
+  type ApiOrder,
+  type ApiPaymentMethod,
+  type ApiProduct,
+} from "@/lib/api";
+import { formatBRL, formatCPF, formatTime, isValidCPF } from "@/lib/format";
 import type { ApiOrderStatus, OrderRealtimeEvent } from "@/websocket/websocket-types";
 import { useOrdersSocket } from "@/websocket/websocket-hooks";
 
@@ -41,6 +70,11 @@ export function OrderDetails() {
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [confirmFinish, setConfirmFinish] = useState(false);
+  const [confirmPayment, setConfirmPayment] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [editTarget, setEditTarget] = useState<ApiOrder | null>(null);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<Exclude<ApiPaymentMethod, "PENDING">>("PIX");
   const [, force] = useState(0);
   const ordersQuery = useQuery({
     queryKey: ["orders", "details"],
@@ -62,6 +96,14 @@ export function OrderDetails() {
     if (selectedId === null && orders[0]) setSelectedId(orders[0].id);
   }, [orders, selectedId]);
 
+  useEffect(() => {
+    setActionsOpen(false);
+    setConfirmFinish(false);
+    setConfirmPayment(false);
+    setConfirmCancel(false);
+    setEditTarget(null);
+  }, [selectedId]);
+
   const refreshForEvent = useCallback(
     (event: OrderRealtimeEvent) => {
       void queryClient.invalidateQueries({ queryKey: ["orders"] });
@@ -79,7 +121,63 @@ export function OrderDetails() {
       queryClient.setQueryData(["orders", "detail", order.id], order);
       await queryClient.invalidateQueries({ queryKey: ["orders"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success(`Pedido #${order.id} finalizado`);
       setConfirmFinish(false);
+    },
+    onError: (error) => toast.error(actionError(error, "Não foi possível finalizar o pedido.")),
+  });
+  const paymentMutation = useMutation({
+    mutationFn: ({ id, method }: { id: number; method: Exclude<ApiPaymentMethod, "PENDING"> }) =>
+      markOrderPaid(id, method),
+    onSuccess: async (order) => {
+      queryClient.setQueryData(["orders", "detail", order.id], order);
+      await queryClient.invalidateQueries({ queryKey: ["orders"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success(`Pagamento do pedido #${order.id} confirmado`);
+      setConfirmPayment(false);
+    },
+    onError: (error) => toast.error(actionError(error, "Não foi possível confirmar o pagamento.")),
+  });
+  const editMutation = useMutation({
+    mutationFn: ({
+      order,
+      items,
+      clienteCpf,
+    }: {
+      order: ApiOrder;
+      items: { productId: number; quantity: number }[];
+      clienteCpf: string;
+    }) => updateOrder(order.id, { items, clienteCpf }),
+    onSuccess: async (updated, variables) => {
+      queryClient.setQueryData(["orders", "detail", updated.id], updated);
+      await queryClient.invalidateQueries({ queryKey: ["orders"] });
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success(
+        variables.order.status === "READY_FOR_PICKUP"
+          ? `Pedido #${updated.id} atualizado e reenviado para a cozinha`
+          : `Pedido #${updated.id} atualizado`,
+      );
+      setEditTarget(null);
+    },
+    onError: async (error) => {
+      await queryClient.invalidateQueries({ queryKey: ["orders"] });
+      toast.error(actionError(error, "Não foi possível editar o pedido."));
+    },
+  });
+  const cancelMutation = useMutation({
+    mutationFn: cancelOrder,
+    onSuccess: async (order) => {
+      queryClient.setQueryData(["orders", "detail", order.id], order);
+      await queryClient.invalidateQueries({ queryKey: ["orders"] });
+      await queryClient.invalidateQueries({ queryKey: ["products"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success(`Pedido #${order.id} cancelado e estoque devolvido`);
+      setConfirmCancel(false);
+    },
+    onError: async (error) => {
+      await queryClient.invalidateQueries({ queryKey: ["orders"] });
+      toast.error(actionError(error, "Não foi possível cancelar o pedido."));
     },
   });
 
@@ -158,8 +256,10 @@ export function OrderDetails() {
                   <p className="text-3xl font-black text-primary">
                     {formatBRL(selected.totalValue)}
                   </p>
-                  <p className="text-xs font-semibold text-muted-foreground mt-1">
-                    {paymentLabel(selected.paymentMethod)}
+                  <p
+                    className={`text-xs font-semibold mt-1 ${selected.paymentStatus === "PAID" ? "text-status-finished" : "text-destructive"}`}
+                  >
+                    {paymentStatusLabel(selected)}
                   </p>
                 </div>
               </div>
@@ -183,22 +283,95 @@ export function OrderDetails() {
                 ))}
               </div>
 
-              {selected.status === "READY_FOR_PICKUP" ? (
-                <button
-                  onClick={() => setConfirmFinish(true)}
-                  className="w-full bg-status-finished text-white font-bold py-4 rounded-xl shadow-elegant hover:scale-[1.01] transition-transform flex items-center justify-center gap-2"
-                >
-                  <CheckCircle2 className="w-5 h-5" /> Finalizar retirada
-                </button>
-              ) : (
+              <div className="space-y-3">
+                <OrderActionMenu
+                  order={selected}
+                  open={actionsOpen}
+                  onToggle={() => setActionsOpen((open) => !open)}
+                  onEdit={() => {
+                    setActionsOpen(false);
+                    setEditTarget(selected);
+                  }}
+                  onPay={() => {
+                    setActionsOpen(false);
+                    setConfirmPayment(true);
+                  }}
+                  onFinish={() => {
+                    setActionsOpen(false);
+                    setConfirmFinish(true);
+                  }}
+                  onCancel={() => {
+                    setActionsOpen(false);
+                    setConfirmCancel(true);
+                  }}
+                />
                 <StatusNotice status={selected.status} />
-              )}
+              </div>
             </motion.div>
           )}
         </div>
       )}
 
       <AnimatePresence>
+        {editTarget && (
+          <EditOrderModal
+            order={editTarget}
+            pending={editMutation.isPending}
+            onClose={() => setEditTarget(null)}
+            onSubmit={(items, clienteCpf) =>
+              editMutation.mutate({ order: editTarget, items, clienteCpf })
+            }
+          />
+        )}
+        {confirmPayment && selected && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-foreground/60 backdrop-blur-sm flex items-center justify-center p-6"
+            onClick={() => setConfirmPayment(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.9 }}
+              onClick={(event) => event.stopPropagation()}
+              className="bg-card rounded-3xl shadow-elegant max-w-sm w-full p-6"
+            >
+              <h3 className="text-xl font-black mb-2">Confirmar pagamento #{selected.id}</h3>
+              <p className="text-muted-foreground text-sm mb-5">
+                Informe a forma recebida para registrar {formatBRL(selected.totalValue)}.
+              </p>
+              <div className="grid grid-cols-2 gap-3 mb-5">
+                <PaymentMethodButton
+                  method="PIX"
+                  selected={paymentMethod === "PIX"}
+                  onSelect={setPaymentMethod}
+                />
+                <PaymentMethodButton
+                  method="DINHEIRO"
+                  selected={paymentMethod === "DINHEIRO"}
+                  onSelect={setPaymentMethod}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setConfirmPayment(false)}
+                  className="flex-1 py-3 rounded-xl border-2 font-bold hover:bg-muted"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => paymentMutation.mutate({ id: selected.id, method: paymentMethod })}
+                  disabled={paymentMutation.isPending}
+                  className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-50"
+                >
+                  Confirmar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
         {confirmFinish && selected && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -234,16 +407,406 @@ export function OrderDetails() {
                   Confirmar
                 </button>
               </div>
-              {finishMutation.isError && (
-                <p className="mt-3 text-sm text-destructive">
-                  Não foi possível finalizar o pedido.
-                </p>
-              )}
+            </motion.div>
+          </motion.div>
+        )}
+        {confirmCancel && selected && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-foreground/60 backdrop-blur-sm flex items-center justify-center p-6"
+            onClick={() => setConfirmCancel(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.9 }}
+              onClick={(event) => event.stopPropagation()}
+              className="bg-card rounded-3xl shadow-elegant max-w-md p-6 text-center"
+            >
+              <XCircle className="w-14 h-14 mx-auto mb-4 text-destructive" />
+              <h3 className="text-xl font-black mb-2">Cancelar pedido #{selected.id}?</h3>
+              <p className="text-muted-foreground text-sm mb-3">
+                O pedido será retirado da operação e suas unidades voltarão ao estoque.
+              </p>
+              <div className="flex gap-3 mt-5">
+                <button
+                  onClick={() => setConfirmCancel(false)}
+                  className="flex-1 py-3 rounded-xl border-2 font-bold hover:bg-muted"
+                >
+                  Voltar
+                </button>
+                <button
+                  onClick={() => cancelMutation.mutate(selected.id)}
+                  disabled={cancelMutation.isPending}
+                  className="flex-1 py-3 rounded-xl bg-destructive text-white font-bold disabled:opacity-50"
+                >
+                  Confirmar cancelamento
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+function OrderActionMenu({
+  order,
+  open,
+  onToggle,
+  onEdit,
+  onPay,
+  onFinish,
+  onCancel,
+}: {
+  order: ApiOrder;
+  open: boolean;
+  onToggle: () => void;
+  onEdit: () => void;
+  onPay: () => void;
+  onFinish: () => void;
+  onCancel: () => void;
+}) {
+  const active = order.status === "PENDING" || order.status === "READY_FOR_PICKUP";
+  const canEdit = active && order.paymentStatus !== "PAID";
+  const canPay = order.paymentStatus === "PENDING" && order.status !== "CANCELLED";
+  const canFinish = order.status === "READY_FOR_PICKUP";
+  const canCancel = active && order.paymentStatus !== "PAID";
+
+  return (
+    <div className="rounded-2xl border overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full p-4 flex items-center justify-between gap-3 bg-foreground text-background font-bold"
+        aria-expanded={open}
+      >
+        <span>Ações do pedido</span>
+        <ChevronDown className={`w-5 h-5 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="p-3 grid sm:grid-cols-2 gap-2 bg-muted/30">
+              <ActionButton
+                Icon={Pencil}
+                title="Editar pedido"
+                detail={
+                  order.paymentStatus === "PAID"
+                    ? "Pedido pago exige ajuste"
+                    : order.status === "READY_FOR_PICKUP"
+                      ? "Retorna para a cozinha"
+                      : canEdit
+                        ? "Itens e cliente"
+                        : "Pedido encerrado"
+                }
+                enabled={canEdit}
+                onClick={onEdit}
+              />
+              <ActionButton
+                Icon={Banknote}
+                title="Marcar como pago"
+                detail={canPay ? "Registrar recebimento" : "Pagamento indisponível"}
+                enabled={canPay}
+                onClick={onPay}
+              />
+              <ActionButton
+                Icon={CheckCircle2}
+                title="Finalizar"
+                detail={canFinish ? "Confirmar retirada" : "Apenas quando pronto"}
+                enabled={canFinish}
+                onClick={onFinish}
+              />
+              <ActionButton
+                Icon={Ban}
+                title="Cancelar pedido"
+                detail={
+                  order.paymentStatus === "PAID"
+                    ? "Pedido pago exige estorno"
+                    : canCancel
+                      ? "Devolve o estoque"
+                      : "Cancelamento indisponível"
+                }
+                enabled={canCancel}
+                destructive
+                onClick={onCancel}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function ActionButton({
+  Icon,
+  title,
+  detail,
+  enabled,
+  destructive = false,
+  onClick,
+}: {
+  Icon: typeof Pencil;
+  title: string;
+  detail: string;
+  enabled: boolean;
+  destructive?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={!enabled}
+      onClick={onClick}
+      className={`rounded-xl border bg-card p-3 text-left flex items-start gap-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+        destructive && enabled
+          ? "hover:bg-destructive/10 hover:border-destructive/30"
+          : "hover:bg-muted"
+      }`}
+    >
+      <Icon
+        className={`w-5 h-5 mt-0.5 shrink-0 ${destructive ? "text-destructive" : "text-primary"}`}
+      />
+      <span>
+        <span className="block text-sm font-bold">{title}</span>
+        <span className="block text-xs text-muted-foreground mt-0.5">{detail}</span>
+      </span>
+    </button>
+  );
+}
+
+function EditOrderModal({
+  order,
+  pending,
+  onClose,
+  onSubmit,
+}: {
+  order: ApiOrder;
+  pending: boolean;
+  onClose: () => void;
+  onSubmit: (items: { productId: number; quantity: number }[], clienteCpf: string) => void;
+}) {
+  const [cpf, setCpf] = useState(order.client.cpf);
+  const [search, setSearch] = useState("");
+  const [quantities, setQuantities] = useState<Record<number, number>>(
+    Object.fromEntries(order.items.map((item) => [item.productId, item.quantity])),
+  );
+  const productsQuery = useQuery({
+    queryKey: ["products", "order-edit"],
+    queryFn: () => getProducts({ size: 500, sort: "name,asc" }),
+  });
+  const products = useMemo(() => {
+    const availableProducts = productsQuery.data?.content ?? [];
+    const productIds = new Set(availableProducts.map((product) => product.id));
+    const missingCurrentProducts: ApiProduct[] = order.items
+      .filter((item) => !productIds.has(item.productId))
+      .map((item) => ({
+        id: item.productId,
+        name: item.productName,
+        price: item.unitPrice,
+        stockQuantity: 0,
+      }));
+    return [...availableProducts, ...missingCurrentProducts];
+  }, [order.items, productsQuery.data?.content]);
+  const initialQuantity = (productId: number) =>
+    order.items.find((item) => item.productId === productId)?.quantity ?? 0;
+  const visibleProducts = products.filter((product) =>
+    product.name.toLowerCase().includes(search.toLowerCase()),
+  );
+  const requestedItems = Object.entries(quantities)
+    .filter(([, quantity]) => quantity > 0)
+    .map(([productId, quantity]) => ({ productId: Number(productId), quantity }));
+  const projectedTotal = requestedItems.reduce((total, item) => {
+    const product = products.find((entry) => entry.id === item.productId);
+    return total + (product?.price ?? 0) * item.quantity;
+  }, 0);
+  const cpfIsValid = isValidCPF(cpf);
+
+  function adjustQuantity(product: ApiProduct, nextQuantity: number) {
+    const maxQuantity = product.stockQuantity + initialQuantity(product.id);
+    if (nextQuantity < 0 || nextQuantity > maxQuantity) return;
+    setQuantities((current) => {
+      const next = { ...current };
+      if (nextQuantity === 0) delete next[product.id];
+      else next[product.id] = nextQuantity;
+      return next;
+    });
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-foreground/60 backdrop-blur-sm flex items-end md:items-center justify-center md:p-6"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ y: 40, scale: 0.98 }}
+        animate={{ y: 0, scale: 1 }}
+        exit={{ y: 40, scale: 0.98 }}
+        onClick={(event) => event.stopPropagation()}
+        className="bg-card rounded-t-3xl md:rounded-3xl shadow-elegant w-full max-w-3xl max-h-[94vh] flex flex-col"
+      >
+        <div className="p-5 md:p-6 border-b flex justify-between gap-4">
+          <div>
+            <h3 className="text-xl md:text-2xl font-black">Editar pedido #{order.id}</h3>
+            <p className="text-sm text-muted-foreground">
+              Ajuste produtos ou vincule outro cliente já cadastrado.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar edição"
+            className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0"
+          >
+            <XCircle className="w-5 h-5" />
+          </button>
+        </div>
+
+        {order.status === "READY_FOR_PICKUP" && (
+          <div className="mx-5 md:mx-6 mt-4 rounded-xl bg-status-preparing/15 text-status-preparing px-4 py-3 text-sm font-bold">
+            Ao salvar, este pedido pronto volta para a cozinha para um novo preparo.
+          </div>
+        )}
+
+        <div className="p-5 md:p-6 space-y-5 overflow-y-auto">
+          <label className="block">
+            <span className="text-sm font-semibold mb-1.5 block">CPF do cliente</span>
+            <input
+              value={formatCPF(cpf)}
+              onChange={(event) => setCpf(event.target.value.replace(/\D/g, ""))}
+              inputMode="numeric"
+              className="input font-mono"
+            />
+            {!cpfIsValid && (
+              <span className="text-xs text-destructive font-semibold mt-1.5 block">
+                Informe um CPF com 11 dígitos.
+              </span>
+            )}
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Pagamentos são alterados pela ação "Marcar como pago", separada da edição.
+          </p>
+          <label className="relative block">
+            <span className="sr-only">Buscar item para edição</span>
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar produto para adicionar"
+              className="input pl-10"
+            />
+          </label>
+
+          {productsQuery.isLoading && (
+            <p className="text-sm text-muted-foreground">Carregando catálogo...</p>
+          )}
+          {productsQuery.isError && (
+            <p className="text-sm text-destructive">Não foi possível carregar o catálogo.</p>
+          )}
+          <div className="space-y-2">
+            {visibleProducts.map((product) => {
+              const quantity = quantities[product.id] ?? 0;
+              const maxQuantity = product.stockQuantity + initialQuantity(product.id);
+              return (
+                <div
+                  key={product.id}
+                  className="rounded-xl border p-3 flex flex-wrap items-center justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <p className="font-bold truncate">{product.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatBRL(product.price)} · até {maxQuantity} no pedido
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-muted flex items-center p-1 gap-2">
+                    <button
+                      type="button"
+                      disabled={quantity === 0}
+                      onClick={() => adjustQuantity(product, quantity - 1)}
+                      aria-label={`Remover uma unidade de ${product.name}`}
+                      className="w-9 h-9 bg-card rounded-lg flex items-center justify-center disabled:opacity-40"
+                    >
+                      <Minus className="w-4 h-4" />
+                    </button>
+                    <span className="w-8 text-center font-black">{quantity}</span>
+                    <button
+                      type="button"
+                      disabled={quantity >= maxQuantity}
+                      onClick={() => adjustQuantity(product, quantity + 1)}
+                      aria-label={`Adicionar uma unidade de ${product.name}`}
+                      className="w-9 h-9 bg-primary text-primary-foreground rounded-lg flex items-center justify-center disabled:opacity-40"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            {!productsQuery.isLoading && visibleProducts.length === 0 && (
+              <p className="rounded-xl bg-muted py-8 text-center text-sm text-muted-foreground">
+                Nenhum produto encontrado.
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="p-5 md:p-6 border-t flex flex-col-reverse sm:flex-row gap-3 sm:justify-between sm:items-center">
+          <p className="text-lg font-black text-primary">
+            Total atualizado: {formatBRL(projectedTotal)}
+          </p>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-3 rounded-xl border font-bold"
+            >
+              Voltar
+            </button>
+            <button
+              type="button"
+              disabled={
+                pending || !cpfIsValid || requestedItems.length === 0 || productsQuery.isError
+              }
+              onClick={() => onSubmit(requestedItems, cpf)}
+              className="px-5 py-3 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-40"
+            >
+              {pending ? "Salvando..." : "Salvar edição"}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function PaymentMethodButton({
+  method,
+  selected,
+  onSelect,
+}: {
+  method: Exclude<ApiPaymentMethod, "PENDING">;
+  selected: boolean;
+  onSelect: (method: Exclude<ApiPaymentMethod, "PENDING">) => void;
+}) {
+  const Icon = method === "PIX" ? QrCode : Banknote;
+  return (
+    <button
+      onClick={() => onSelect(method)}
+      className={`p-4 rounded-xl border-2 font-bold flex flex-col items-center gap-2 transition-colors ${selected ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40"}`}
+    >
+      <Icon className="w-6 h-6" /> {paymentLabel(method)}
+    </button>
   );
 }
 
@@ -310,4 +873,22 @@ function fmtElapsed(seconds: number) {
 
 function paymentLabel(paymentMethod: string) {
   return paymentMethod === "PIX" ? "PIX" : paymentMethod === "DINHEIRO" ? "Dinheiro" : "Pendente";
+}
+
+function paymentStatusLabel(order: ApiOrder) {
+  if (order.paymentStatus === "CANCELLED") return "Pagamento cancelado";
+  if (order.paymentStatus === "PENDING") return "Pagamento pendente";
+  return `Pago - ${paymentLabel(order.paymentMethod)}`;
+}
+
+function actionError(error: unknown, fallback: string) {
+  if (error instanceof ApiError) {
+    try {
+      const detail = (JSON.parse(error.message) as { detail?: string }).detail;
+      if (detail) return detail;
+    } catch {
+      if (error.status === 409) return "Esta ação não é permitida no estado atual do pedido.";
+    }
+  }
+  return fallback;
 }

@@ -1,9 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { ShoppingBag, PackagePlus, ClipboardList } from "lucide-react";
+import { ShoppingBag, ClipboardList } from "lucide-react";
 import { OrdersFlow } from "@/components/mcd/OrdersFlow";
-import { ProductsForm } from "@/components/mcd/ProductsForm";
 import { OrderDetails } from "@/components/mcd/OrderDetails";
 
 export const Route = createFileRoute("/orders")({
@@ -13,7 +12,6 @@ export const Route = createFileRoute("/orders")({
 
 const tabs = [
   { id: "flow", label: "Realização de Pedidos", icon: ShoppingBag },
-  { id: "products", label: "Cadastro de Produtos", icon: PackagePlus },
   { id: "details", label: "Detalhamento de Pedidos", icon: ClipboardList },
 ] as const;
 
@@ -28,10 +26,17 @@ function OrdersPage() {
           const Icon = t.icon;
           const active = tab === t.id;
           return (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={`relative px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors whitespace-nowrap ${active ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`relative px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors whitespace-nowrap ${active ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+            >
               {active && (
-                <motion.div layoutId="orders-tab" className="absolute inset-0 bg-gradient-primary rounded-xl shadow-elegant" transition={{ type: "spring", stiffness: 300, damping: 28 }} />
+                <motion.div
+                  layoutId="orders-tab"
+                  className="absolute inset-0 bg-gradient-primary rounded-xl shadow-elegant"
+                  transition={{ type: "spring", stiffness: 300, damping: 28 }}
+                />
               )}
               <Icon className="relative z-10 w-4 h-4" />
               <span className="relative z-10">{t.label}</span>
@@ -42,7 +47,6 @@ function OrdersPage() {
 
       <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
         {tab === "flow" && <OrdersFlow />}
-        {tab === "products" && <ProductsForm />}
         {tab === "details" && <OrderDetails />}
       </motion.div>
     </div>
