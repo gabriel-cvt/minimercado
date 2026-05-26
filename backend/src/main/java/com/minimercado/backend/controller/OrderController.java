@@ -26,7 +26,18 @@ import static com.minimercado.backend.controller.ApiRoutes.*;
 public class OrderController {
 
     private static final Set<String> ORDER_SORT_FIELDS =
-            Set.of("id", "orderTime", "status", "paymentStatus", "paymentMethod", "totalValue");
+            Set.of(
+                    "id",
+                    "orderTime",
+                    "readyAt",
+                    "finishedAt",
+                    "paidAt",
+                    "cancelledAt",
+                    "status",
+                    "paymentStatus",
+                    "paymentMethod",
+                    "totalValue"
+            );
 
     private final OrderService orderService;
 
@@ -44,7 +55,7 @@ public class OrderController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
-            @Parameter(description = "Ordenacao no formato campo,direcao. Campos aceitos: id, orderTime, status, paymentStatus, paymentMethod, totalValue.", example = "id,asc")
+            @Parameter(description = "Ordenacao no formato campo,direcao. Campos aceitos: id, orderTime, readyAt, finishedAt, paidAt, cancelledAt, status, paymentStatus, paymentMethod, totalValue.", example = "id,asc")
             @RequestParam(defaultValue = "orderTime,asc") String sort) {
         return ResponseEntity.ok(orderService.list(
                 status,
@@ -61,7 +72,7 @@ public class OrderController {
             @PathVariable("cpf") String clientCpf,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
-            @Parameter(description = "Ordenacao no formato campo,direcao. Campos aceitos: id, orderTime, status, paymentStatus, paymentMethod, totalValue.", example = "id,asc")
+            @Parameter(description = "Ordenacao no formato campo,direcao. Campos aceitos: id, orderTime, readyAt, finishedAt, paidAt, cancelledAt, status, paymentStatus, paymentMethod, totalValue.", example = "id,asc")
             @RequestParam(defaultValue = "orderTime,asc") String sort) {
         return ResponseEntity.ok(orderService.getFromClient(
                 clientCpf,

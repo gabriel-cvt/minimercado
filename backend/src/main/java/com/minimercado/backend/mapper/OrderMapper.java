@@ -30,6 +30,10 @@ public class OrderMapper {
         return new OrderResponseDTO(
                 order.getId(),
                 order.getOrderTime(),
+                order.getReadyAt(),
+                order.getFinishedAt(),
+                order.getPaidAt(),
+                order.getCancelledAt(),
                 order.getStatus(),
                 order.getPaymentStatus(),
                 items,

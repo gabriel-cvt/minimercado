@@ -20,4 +20,10 @@ public class RestExceptionHandler {
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
         return ResponseEntity.badRequest().body(problemDetail);
     }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ProblemDetail> handleConflict(IllegalStateException exception) {
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(problemDetail);
+    }
 }

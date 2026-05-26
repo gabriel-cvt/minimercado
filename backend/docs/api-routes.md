@@ -18,6 +18,19 @@ Este documento descreve as rotas REST existentes no backend do minimercado, seus
 ALTER TABLE products DROP COLUMN IF EXISTS requires_kitchen_preparation;
 ```
 
+## Timestamps operacionais
+
+Pedidos registram `readyAt`, `finishedAt`, `paidAt` e `cancelledAt`. Como o perfil
+`prod` valida o schema, bancos existentes precisam receber as novas colunas antes
+do deploy:
+
+```sql
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS ready_at TIMESTAMP;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS finished_at TIMESTAMP;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP;
+```
+
 ## Enums
 
 ### `OrderStatus`
@@ -341,7 +354,7 @@ Query params:
 | `to` | date-time | Filtra pedidos com `orderTime` menor ou igual ao valor informado. |
 | `page` | integer | Página. Padrão: `0`. |
 | `size` | integer | Tamanho da página. Padrão do controller: `10`. |
-| `sort` | string | Ordenação. Padrão: `orderTime,asc`. Campos: `id`, `orderTime`, `status`, `paymentStatus`, `paymentMethod`, `totalValue`. |
+| `sort` | string | Ordenação. Padrão: `orderTime,asc`. Campos: `id`, `orderTime`, `readyAt`, `finishedAt`, `paidAt`, `cancelledAt`, `status`, `paymentStatus`, `paymentMethod`, `totalValue`. |
 
 Exemplo:
 
@@ -357,6 +370,10 @@ Resposta `200 OK`:
     {
       "id": 10,
       "orderTime": "2026-05-20T14:30:00",
+      "readyAt": null,
+      "finishedAt": null,
+      "paidAt": null,
+      "cancelledAt": null,
       "status": "PENDING",
       "paymentStatus": "PENDING",
       "items": [
@@ -401,6 +418,10 @@ Resposta `200 OK`:
 {
   "id": 10,
   "orderTime": "2026-05-20T14:30:00",
+  "readyAt": null,
+  "finishedAt": null,
+  "paidAt": null,
+  "cancelledAt": null,
   "status": "PENDING",
   "paymentStatus": "PENDING",
   "items": [
@@ -439,7 +460,7 @@ Query params:
 | --- | --- | --- |
 | `page` | integer | Página. Padrão: `0`. |
 | `size` | integer | Tamanho da página. Padrão do controller: `10`. |
-| `sort` | string | Ordenação. Padrão: `orderTime,asc`. Campos: `id`, `orderTime`, `status`, `paymentStatus`, `paymentMethod`, `totalValue`. |
+| `sort` | string | Ordenação. Padrão: `orderTime,asc`. Campos: `id`, `orderTime`, `readyAt`, `finishedAt`, `paidAt`, `cancelledAt`, `status`, `paymentStatus`, `paymentMethod`, `totalValue`. |
 
 Resposta `200 OK`: `Page<OrderResponseDTO>`.
 
@@ -477,7 +498,9 @@ Observações:
 - O cliente precisa existir.
 - Cada produto precisa existir.
 - O estoque dos itens é reduzido na criação.
-- O pedido nasce com `status = PENDING` e `paymentStatus = PENDING`.
+- O pedido nasce com `status = PENDING`.
+- Com `paymentMethod = PENDING`, mantém `paymentStatus = PENDING`.
+- Com `paymentMethod = PIX` ou `DINHEIRO`, nasce com `paymentStatus = PAID` e registra `paidAt`.
 - Publica evento WebSocket em `/topic/kitchen/orders`, pois todo item é preparado na cozinha.
 - Sempre publica evento geral em `/topic/orders` e `/topic/orders/public`.
 
@@ -520,10 +543,13 @@ Campos obrigatórios:
 Observações:
 
 - Não é permitido editar pedido `CANCELLED` ou `FINISHED`.
+- Não é permitido editar pedido já pago, pois não existe fluxo de ajuste financeiro/estorno.
 - O backend recalcula diferenças de estoque entre a versão atual e a versão solicitada.
 - O total do pedido é recalculado.
+- Se o pedido já estiver `READY_FOR_PICKUP`, qualquer edição altera seu status para `PENDING`, limpa `readyAt` e o reenvia à cozinha para novo preparo.
 - Publica evento em `/topic/kitchen/orders`.
 - Sempre publica evento geral em `/topic/orders` e `/topic/orders/public`.
+- Uma edição negada pelo estado atual responde `409 Conflict`.
 
 Resposta `200 OK`: `OrderResponseDTO`.
 
@@ -550,6 +576,7 @@ Observações:
 - Não é permitido pagar pedido `CANCELLED`.
 - Se o pedido já estiver pago, retorna o pedido sem alteração.
 - Quando `paymentMethod` é enviado, o backend atualiza o método de pagamento antes de marcar como pago.
+- Registra `paidAt` na primeira confirmação de pagamento.
 - Publica evento `ORDER_PAID` em `/topic/orders`.
 - O evento de pagamento não é publicado em `/topic/orders/public`.
 
@@ -569,6 +596,7 @@ Observações:
 
 - Não é permitido marcar como pronto um pedido `CANCELLED` ou `FINISHED`.
 - Atualiza `status` para `READY_FOR_PICKUP`.
+- Registra `readyAt` apenas na primeira transição para pronto; esse horário permite ao painel retirar a chamada após 5 minutos.
 - Publica evento em `/topic/pickup/orders`.
 - Publica evento geral em `/topic/orders` e `/topic/orders/public`.
 
@@ -588,6 +616,7 @@ Observações:
 
 - Só é permitido finalizar pedido com `status = READY_FOR_PICKUP`.
 - Atualiza `status` para `FINISHED`.
+- Registra `finishedAt`, usado para contar finalizações ocorridas hoje.
 - Publica evento geral em `/topic/orders` e `/topic/orders/public`.
 
 Resposta `200 OK`: `OrderResponseDTO`.
@@ -606,11 +635,14 @@ Observações:
 
 - Se o pedido já estiver `CANCELLED`, retorna o pedido sem alteração.
 - Não é permitido cancelar pedido `FINISHED`.
+- Não é permitido cancelar pedido já pago, pois não existe fluxo de estorno.
 - O estoque dos itens é devolvido.
 - Atualiza `status` para `CANCELLED`.
 - Atualiza `paymentStatus` para `CANCELLED`.
+- Registra `cancelledAt`, usado para contar cancelamentos ocorridos hoje.
 - Publica evento em `/topic/kitchen/orders`.
 - Publica evento geral em `/topic/orders` e `/topic/orders/public`.
+- Um cancelamento negado porque o pedido já foi finalizado responde `409 Conflict`.
 
 Resposta `200 OK`: `OrderResponseDTO`.
 
@@ -630,39 +662,93 @@ Resposta `200 OK`:
   "preparingOrders": 3,
   "readyForPickupOrders": 2,
   "finishedToday": 6,
-  "cancelledToday": 1
+  "cancelledToday": 1,
+  "averagePreparationMinutes": 8.4
 }
 ```
 
 Campos:
 
 - `ordersToday`: quantidade de pedidos criados hoje.
-- `revenueToday`: soma do valor total dos pedidos pagos hoje.
+- `revenueToday`: soma do valor total dos pedidos cuja confirmação de pagamento (`paidAt`) ocorreu hoje.
 - `pendingPayments`: quantidade total de pedidos com pagamento pendente.
 - `preparingOrders`: quantidade total de pedidos com `status = PENDING`.
 - `readyForPickupOrders`: quantidade total de pedidos com `status = READY_FOR_PICKUP`.
-- `finishedToday`: quantidade de pedidos finalizados hoje.
-- `cancelledToday`: quantidade de pedidos cancelados hoje.
+- `finishedToday`: quantidade de pedidos cujo `finishedAt` ocorreu hoje.
+- `cancelledToday`: quantidade de pedidos cujo `cancelledAt` ocorreu hoje.
+- `averagePreparationMinutes`: média, em minutos, entre criação e `readyAt` para pedidos preparados hoje.
+
+### `GET /api/dashboard/analytics`
+
+Retorna métricas gerenciais agregadas para o período curto de operação do sistema.
+O frontend utiliza esta rota para tempo médio de preparo, distribuição de pagamentos,
+picos por hora, top clientes e top produtos. Não existe série de faturamento de 7 dias.
+
+Query params:
+
+| Parâmetro | Tipo | Descrição |
+| --- | --- | --- |
+| `days` | integer | Período móvel em dias, entre `1` e `3`. Padrão: `3`. |
+
+Resposta `200 OK`:
+
+```json
+{
+  "days": 3,
+  "averagePreparationMinutes": 8.4,
+  "averageTicket": 26.5,
+  "paymentMethods": [
+    { "paymentMethod": "PIX", "ordersCount": 8 }
+  ],
+  "ordersByHour": [
+    { "hour": 14, "ordersCount": 5 }
+  ],
+  "topClients": [
+    {
+      "clientId": 1,
+      "name": "Maria Silva",
+      "cpf": "12345678900",
+      "ordersCount": 3,
+      "totalSpent": 95.7
+    }
+  ],
+  "topProducts": [
+    {
+      "productId": 2,
+      "name": "Sanduíche",
+      "quantitySold": 12,
+      "totalValue": 154.8
+    }
+  ]
+}
+```
+
+Regras das métricas:
+
+- Tempo de preparo considera pedidos que receberam `readyAt` no período.
+- Ticket médio, métodos de pagamento e top clientes consideram pagamentos confirmados no período.
+- Pedidos por hora e top produtos ignoram pedidos cancelados criados no período.
 
 ## Resumo de rotas
 
-| Método | Rota | Função |
-| --- | --- | --- |
-| `POST` | `/api/clients` | Cria cliente. |
-| `GET` | `/api/clients/cpf/{cpf}` | Busca cliente por CPF. |
-| `GET` | `/api/products` | Lista produtos com filtros. |
-| `GET` | `/api/products/{id}` | Busca produto por ID. |
-| `POST` | `/api/products` | Cria produto. |
-| `PUT` | `/api/products/{id}` | Atualiza produto. |
-| `PATCH` | `/api/products/{id}/stock` | Ajusta estoque do produto. |
-| `DELETE` | `/api/products/{id}` | Remove produto. |
-| `GET` | `/api/orders` | Lista pedidos com filtros. |
-| `GET` | `/api/orders/{id}` | Busca pedido por ID. |
-| `GET` | `/api/orders/client/{cpf}` | Lista pedidos por CPF do cliente. |
-| `POST` | `/api/orders` | Cria pedido. |
-| `PUT` | `/api/orders/{id}` | Atualiza pedido. |
-| `PATCH` | `/api/orders/{id}/pay` | Marca pedido como pago. |
-| `PATCH` | `/api/orders/{id}/ready` | Marca pedido como pronto para retirada. |
-| `PATCH` | `/api/orders/{id}/finish` | Finaliza pedido. |
-| `PATCH` | `/api/orders/{id}/cancel` | Cancela pedido. |
-| `GET` | `/api/dashboard/summary` | Retorna resumo operacional do dia. |
+| Método | Rota | Função | Integrado no frontend |
+| --- | --- | --- | --- |
+| `POST` | `/api/clients` | Cria cliente. | Sim - cadastro rápido no checkout. |
+| `GET` | `/api/clients/cpf/{cpf}` | Busca cliente por CPF. | Sim - identificação no checkout. |
+| `GET` | `/api/products` | Lista produtos com filtros. | Sim - catálogo e gestão de produtos. |
+| `GET` | `/api/products/{id}` | Busca produto por ID. | Sim - contrato disponível na gestão de produtos. |
+| `POST` | `/api/products` | Cria produto. | Sim - gestão de produtos. |
+| `PUT` | `/api/products/{id}` | Atualiza produto. | Sim - gestão de produtos. |
+| `PATCH` | `/api/products/{id}/stock` | Ajusta estoque do produto. | Sim - gestão de produtos. |
+| `DELETE` | `/api/products/{id}` | Remove produto. | Sim - gestão de produtos. |
+| `GET` | `/api/orders` | Lista pedidos com filtros. | Sim - home, painel, cozinha, detalhamento e dashboard. |
+| `GET` | `/api/orders/{id}` | Busca pedido por ID. | Sim - cozinha e detalhamento. |
+| `GET` | `/api/orders/client/{cpf}` | Lista pedidos por CPF do cliente. | Não. |
+| `POST` | `/api/orders` | Cria pedido. | Sim - finalização do checkout. |
+| `PUT` | `/api/orders/{id}` | Atualiza pedido. | Sim - menu de ações no detalhamento. |
+| `PATCH` | `/api/orders/{id}/pay` | Marca pedido como pago. | Sim - detalhamento e pendências no dashboard. |
+| `PATCH` | `/api/orders/{id}/ready` | Marca pedido como pronto para retirada. | Sim - cozinha. |
+| `PATCH` | `/api/orders/{id}/finish` | Finaliza pedido. | Sim - detalhamento. |
+| `PATCH` | `/api/orders/{id}/cancel` | Cancela pedido. | Sim - menu de ações no detalhamento. |
+| `GET` | `/api/dashboard/summary` | Retorna resumo operacional do dia. | Sim - home e dashboard. |
+| `GET` | `/api/dashboard/analytics` | Retorna métricas gerenciais de ate 3 dias. | Sim - dashboard. |

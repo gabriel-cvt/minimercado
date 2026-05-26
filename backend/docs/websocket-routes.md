@@ -199,11 +199,11 @@ As seguintes consultas não publicam eventos WebSocket no código atual:
 
 ## Resumo
 
-| Tipo | Rota/Destino | Direção | Função |
-| --- | --- | --- | --- |
-| Conexão | `/ws` | Cliente -> Backend | Abre a conexão STOMP/SockJS. |
-| Tópico | `/topic/orders` | Backend -> Cliente | Envia eventos gerais de pedidos para operação. |
-| Tópico | `/topic/orders/public` | Backend -> Cliente | Envia eventos de pedidos adequados para painel público. |
-| Tópico | `/topic/kitchen/orders` | Backend -> Cliente | Envia eventos de pedidos para a cozinha. |
-| Tópico | `/topic/pickup/orders` | Backend -> Cliente | Envia eventos de pedidos prontos para retirada. |
-| Prefixo | `/app` | Cliente -> Backend | Prefixo configurado, mas sem handlers implementados atualmente. |
+| Tipo | Rota/Destino | Direção | Função | Integrado no frontend |
+| --- | --- | --- | --- | --- |
+| Conexão | `/ws` | Cliente -> Backend | Abre a conexão STOMP/SockJS. | Sim. |
+| Tópico | `/topic/orders` | Backend -> Cliente | Envia eventos gerais de pedidos para operação. | Sim - home, dashboard, cozinha e detalhamento. |
+| Tópico | `/topic/orders/public` | Backend -> Cliente | Envia eventos de pedidos adequados para painel público. | Sim - painel. |
+| Tópico | `/topic/kitchen/orders` | Backend -> Cliente | Envia eventos de pedidos para a cozinha. | Sim - cozinha. |
+| Tópico | `/topic/pickup/orders` | Backend -> Cliente | Envia eventos de pedidos prontos para retirada. | Sim - cozinha. |
+| Prefixo | `/app` | Cliente -> Backend | Prefixo configurado, mas sem handlers implementados atualmente. | Não aplicável. |

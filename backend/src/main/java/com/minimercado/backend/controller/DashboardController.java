@@ -1,12 +1,15 @@
 package com.minimercado.backend.controller;
 
+import com.minimercado.backend.dto.dashboard.DashboardAnalyticsDTO;
 import com.minimercado.backend.dto.dashboard.DashboardSummaryDTO;
 import com.minimercado.backend.service.dashboard.DashboardService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import static com.minimercado.backend.controller.ApiRoutes.API_DASHBOARD_ANALYTICS;
 import static com.minimercado.backend.controller.ApiRoutes.API_DASHBOARD_SUMMARY;
 
 @RestController
@@ -18,5 +21,11 @@ public class DashboardController {
     @GetMapping(API_DASHBOARD_SUMMARY)
     public ResponseEntity<DashboardSummaryDTO> getSummary() {
         return ResponseEntity.ok(dashboardService.getSummary());
+    }
+
+    @GetMapping(API_DASHBOARD_ANALYTICS)
+    public ResponseEntity<DashboardAnalyticsDTO> getAnalytics(
+            @RequestParam(defaultValue = "3") int days) {
+        return ResponseEntity.ok(dashboardService.getAnalytics(days));
     }
 }

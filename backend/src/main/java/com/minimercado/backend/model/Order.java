@@ -25,6 +25,14 @@ public class Order {
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
     private LocalDateTime orderTime = LocalDateTime.now();
 
+    private LocalDateTime readyAt;
+
+    private LocalDateTime finishedAt;
+
+    private LocalDateTime paidAt;
+
+    private LocalDateTime cancelledAt;
+
     @Enumerated(EnumType.STRING)
     private OrderStatus status = OrderStatus.PENDING;
 
@@ -34,7 +42,7 @@ public class Order {
     @Enumerated(EnumType.STRING)
     private PaymentMethod paymentMethod;
 
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderItem> items;
 
     @ManyToOne

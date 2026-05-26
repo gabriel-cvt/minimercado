@@ -12,6 +12,10 @@ import java.util.List;
 public record OrderResponseDTO(
         Long id,
         LocalDateTime orderTime,
+        LocalDateTime readyAt,
+        LocalDateTime finishedAt,
+        LocalDateTime paidAt,
+        LocalDateTime cancelledAt,
         OrderStatus status,
         PaymentStatus paymentStatus,
         List<OrderItemResponseDTO> items,

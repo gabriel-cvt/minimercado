@@ -7,6 +7,7 @@ public record DashboardSummaryDTO(
         Long preparingOrders,
         Long readyForPickupOrders,
         Long finishedToday,
-        Long cancelledToday
+        Long cancelledToday,
+        Double averagePreparationMinutes
 ) {
 }

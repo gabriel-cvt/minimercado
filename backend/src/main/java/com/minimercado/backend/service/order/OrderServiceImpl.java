@@ -85,6 +85,10 @@ public class OrderServiceImpl implements OrderService{
         order.setItems(buildOrderItems(data.items(), order));
         decreaseStock(order.getItems());
         order.setPaymentMethod(data.paymentMethod());
+        if (data.paymentMethod() != PaymentMethod.PENDING) {
+            order.setPaymentStatus(PaymentStatus.PAID);
+            order.setPaidAt(LocalDateTime.now());
+        }
         order.calculateTotal();
         
         Order savedOrder = orderRepository.save(order);
@@ -101,9 +105,14 @@ public class OrderServiceImpl implements OrderService{
 
         if (order.getStatus() == OrderStatus.CANCELLED ||
                 order.getStatus() == OrderStatus.FINISHED) {
-            throw new IllegalStateException();
+            throw new IllegalStateException("Pedidos cancelados ou finalizados nao podem ser editados");
         }
 
+        if (order.getPaymentStatus() == PaymentStatus.PAID) {
+            throw new IllegalStateException("Pedidos pagos nao podem ser editados sem ajuste financeiro");
+        }
+
+        OrderStatus previousStatus = order.getStatus();
         Client client = clientService.findEntityByCpf(data.clienteCpf());
         if (!order.getClient().getId().equals(client.getId())) {
             order.setClient(client);
@@ -119,10 +128,20 @@ public class OrderServiceImpl implements OrderService{
         order.getItems().addAll(buildOrderItems(data.items(), order));
         order.calculateTotal();
 
+        if (previousStatus == OrderStatus.READY_FOR_PICKUP) {
+            order.setStatus(OrderStatus.PENDING);
+            order.setReadyAt(null);
+        }
+
         Order savedOrder = orderRepository.save(order);
 
         publishKitchenEvent(savedOrder, OrderKitchenEventType.UPDATED);
-        publishRealtimeEvent(savedOrder, OrderRealtimeEventType.ORDER_UPDATED, null, null);
+        publishRealtimeEvent(
+                savedOrder,
+                OrderRealtimeEventType.ORDER_UPDATED,
+                previousStatus == savedOrder.getStatus() ? null : previousStatus,
+                previousStatus == savedOrder.getStatus() ? null : savedOrder.getStatus()
+        );
         return mapper.toResponse(savedOrder);
     }
 
@@ -136,13 +155,18 @@ public class OrderServiceImpl implements OrderService{
         }
 
         if (order.getStatus() == OrderStatus.FINISHED) {
-            throw new IllegalStateException();
+            throw new IllegalStateException("Pedidos finalizados nao podem ser cancelados");
+        }
+
+        if (order.getPaymentStatus() == PaymentStatus.PAID) {
+            throw new IllegalStateException("Pedidos pagos nao podem ser cancelados sem estorno");
         }
 
         OrderStatus previousStatus = order.getStatus();
         increaseStock(order.getItems());
         order.setStatus(OrderStatus.CANCELLED);
         order.setPaymentStatus(PaymentStatus.CANCELLED);
+        order.setCancelledAt(LocalDateTime.now());
         Order savedOrder = orderRepository.save(order);
 
         publishKitchenEvent(savedOrder, OrderKitchenEventType.CANCELLED);
@@ -156,15 +180,20 @@ public class OrderServiceImpl implements OrderService{
         Order order = findOrderById(id);
 
         if (order.getStatus() == OrderStatus.CANCELLED) {
-            throw new IllegalStateException("");
+            throw new IllegalStateException("Pedidos cancelados nao podem ser marcados como prontos");
         }
 
         if (order.getStatus() == OrderStatus.FINISHED) {
-            throw new IllegalStateException();
+            throw new IllegalStateException("Pedidos finalizados nao podem ser marcados como prontos");
+        }
+
+        if (order.getStatus() == OrderStatus.READY_FOR_PICKUP) {
+            return mapper.toResponse(order);
         }
 
         OrderStatus previousStatus = order.getStatus();
         order.setStatus(OrderStatus.READY_FOR_PICKUP);
+        order.setReadyAt(LocalDateTime.now());
         Order savedOrder = orderRepository.save(order);
 
         // Evento para avisar que o pedido está pronto para coleta
@@ -179,7 +208,7 @@ public class OrderServiceImpl implements OrderService{
         Order order = findOrderById(id);
 
         if (order.getStatus() == OrderStatus.CANCELLED) {
-            throw new IllegalStateException();
+            throw new IllegalStateException("Pedidos cancelados nao podem receber pagamento");
         }
 
         if (order.getPaymentStatus() == PaymentStatus.PAID) {
@@ -191,6 +220,7 @@ public class OrderServiceImpl implements OrderService{
         }
 
         order.setPaymentStatus(PaymentStatus.PAID);
+        order.setPaidAt(LocalDateTime.now());
 
         Order savedOrder = orderRepository.save(order);
         publishRealtimeEvent(savedOrder, OrderRealtimeEventType.ORDER_PAID, null, null);
@@ -204,11 +234,12 @@ public class OrderServiceImpl implements OrderService{
         Order order = findOrderById(id);
 
         if (order.getStatus() != OrderStatus.READY_FOR_PICKUP) {
-            throw new IllegalStateException();
+            throw new IllegalStateException("Somente pedidos prontos para retirada podem ser finalizados");
         }
 
         OrderStatus previousStatus = order.getStatus();
         order.setStatus(OrderStatus.FINISHED);
+        order.setFinishedAt(LocalDateTime.now());
         Order savedOrder = orderRepository.save(order);
         publishRealtimeEvent(savedOrder, OrderRealtimeEventType.ORDER_STATUS_CHANGED, previousStatus, savedOrder.getStatus());
         return mapper.toResponse(savedOrder);
