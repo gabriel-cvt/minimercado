@@ -28,7 +28,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public ProductResponseDTO getById(Long id) {
-        return productMapper.toResponse(findProductById(id));
+        return productMapper.toResponse(findActiveProductById(id));
     }
 
     @Override
@@ -52,7 +52,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public ProductResponseDTO update(Long id, ProductPutDTO data) {
-        Product product = findProductById(id);
+        Product product = findActiveProductById(id);
 
         updateProductFields(product, data);
 
@@ -62,16 +62,15 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public void delete(Long id) {
-        if (!productRepository.existsById(id)) {
-            throw new EntityNotFoundException();
-        }
-        productRepository.deleteById(id);
+        Product product = findProductById(id);
+        product.setActive(false);
+        productRepository.save(product);
     }
 
     @Override
     @Transactional
     public ProductResponseDTO  updateStock(Long id, Integer quantityChange) {
-        Product product = findProductById(id);
+        Product product = findActiveProductById(id);
 
         applyStockChange(product, quantityChange);
 
@@ -81,6 +80,14 @@ public class ProductServiceImpl implements ProductService {
     private Product findProductById(Long id) {
         return productRepository.findById(id)
                 .orElseThrow(EntityNotFoundException::new);
+    }
+
+    private Product findActiveProductById(Long id) {
+        Product product = findProductById(id);
+        if (Boolean.FALSE.equals(product.getActive())) {
+            throw new EntityNotFoundException();
+        }
+        return product;
     }
 
     private Product buildProduct(ProductPostDTO data) {
@@ -130,6 +137,8 @@ public class ProductServiceImpl implements ProductService {
             Boolean inStock) {
         return (root, query, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
+
+            predicates.add(criteriaBuilder.isTrue(root.<Boolean>get("active")));
 
             if (name != null && !name.isBlank()) {
                 predicates.add(criteriaBuilder.like(

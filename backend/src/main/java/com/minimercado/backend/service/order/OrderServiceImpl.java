@@ -82,13 +82,9 @@ public class OrderServiceImpl implements OrderService{
         Client client = clientService.findEntityByCpf(data.clienteCpf());
         order.setClient(client);
 
-        order.setItems(buildOrderItems(data.items(), order));
+        order.setItems(buildOrderItems(data.items(), order, true));
         decreaseStock(order.getItems());
         order.setPaymentMethod(data.paymentMethod());
-        if (data.paymentMethod() != PaymentMethod.PENDING) {
-            order.setPaymentStatus(PaymentStatus.PAID);
-            order.setPaidAt(LocalDateTime.now());
-        }
         order.calculateTotal();
         
         Order savedOrder = orderRepository.save(order);
@@ -125,7 +121,7 @@ public class OrderServiceImpl implements OrderService{
         applyStockChangesForUpdate(order, data.items());
 
         order.getItems().clear();
-        order.getItems().addAll(buildOrderItems(data.items(), order));
+        order.getItems().addAll(buildOrderItems(data.items(), order, false));
         order.calculateTotal();
 
         if (previousStatus == OrderStatus.READY_FOR_PICKUP) {
@@ -219,6 +215,10 @@ public class OrderServiceImpl implements OrderService{
             order.setPaymentMethod(paymentMethod);
         }
 
+        if (order.getPaymentMethod() == null) {
+            throw new IllegalArgumentException("Informe o metodo de pagamento para confirmar o recebimento");
+        }
+
         order.setPaymentStatus(PaymentStatus.PAID);
         order.setPaidAt(LocalDateTime.now());
 
@@ -255,14 +255,24 @@ public class OrderServiceImpl implements OrderService{
                 .orElseThrow(EntityNotFoundException::new);
     }
 
-    private List<OrderItem> buildOrderItems(List<OrderItemRequestDTO> items, Order order) {
-        return items.stream()
+    private Product findOrderableProductById(Long id) {
+        Product product = findProductById(id);
+        if (Boolean.FALSE.equals(product.getActive())) {
+            throw new IllegalStateException("Produtos removidos do catalogo nao podem ser adicionados a pedidos");
+        }
+        return product;
+    }
+
+    private List<OrderItem> buildOrderItems(List<OrderItemRequestDTO> items, Order order, boolean requireActiveProduct) {
+        return new ArrayList<>(items.stream()
                 .map(itemDto -> {
                     validateOrderItemQuantity(itemDto.quantity());
-                    Product product = findProductById(itemDto.productId());
+                    Product product = requireActiveProduct
+                            ? findOrderableProductById(itemDto.productId())
+                            : findProductById(itemDto.productId());
                     return new OrderItem(product, order, itemDto.quantity());
                 })
-                .toList();
+                .toList());
     }
 
     private void decreaseStock(List<OrderItem> items) {
@@ -282,7 +292,7 @@ public class OrderServiceImpl implements OrderService{
             int quantityDifference = requestedQuantity - currentQuantity;
 
             if (quantityDifference > 0) {
-                findProductById(productId).decreaseStock(quantityDifference);
+                findOrderableProductById(productId).decreaseStock(quantityDifference);
             }
 
             if (quantityDifference < 0) {

@@ -18,6 +18,15 @@ Este documento descreve as rotas REST existentes no backend do minimercado, seus
 ALTER TABLE products DROP COLUMN IF EXISTS requires_kitchen_preparation;
 ```
 
+## Ciclo de vida dos produtos
+
+- A remoção de um produto é lógica: ele deixa de aparecer no catálogo, mas continua referenciado por pedidos anteriores.
+- Em bancos existentes, adicione a coluna interna antes de implantar a aplicação com perfil `prod`:
+
+```sql
+ALTER TABLE products ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+```
+
 ## Timestamps operacionais
 
 Pedidos registram `readyAt`, `finishedAt`, `paidAt` e `cancelledAt`. Como o perfil
@@ -55,7 +64,15 @@ CANCELLED
 ```text
 PIX
 DINHEIRO
-PENDING
+```
+
+`PaymentMethod` registra a forma escolhida; `PaymentStatus` registra se o pagamento
+foi efetivamente confirmado. Bancos que possuam valores legados devem converter
+o antigo pseudo-método `PENDING` para `NULL`; ao confirmar esses pedidos, a rota
+de pagamento deve receber a forma efetivamente utilizada:
+
+```sql
+UPDATE orders SET payment_method = NULL WHERE payment_method = 'PENDING';
 ```
 
 ## Paginação
@@ -144,7 +161,7 @@ Resposta `200 OK`:
 
 ### `GET /api/products`
 
-Lista produtos com paginação e filtros opcionais.
+Lista produtos ativos do catálogo com paginação e filtros opcionais. Produtos removidos não são retornados.
 
 Query params:
 
@@ -184,7 +201,7 @@ Resposta `200 OK`:
 
 ### `GET /api/products/{id}`
 
-Busca um produto pelo ID.
+Busca um produto ativo pelo ID. Produtos removidos respondem `404 Not Found`.
 
 Path params:
 
@@ -323,7 +340,7 @@ Resposta `200 OK`:
 
 ### `DELETE /api/products/{id}`
 
-Remove um produto.
+Remove um produto do catálogo sem apagar o histórico de pedidos que o referencia.
 
 Path params:
 
@@ -336,6 +353,12 @@ Resposta:
 ```text
 204 No Content
 ```
+
+Observações:
+
+- Após a remoção, o produto não aparece em `GET /api/products` e não aceita edição ou ajuste de estoque.
+- Pedidos existentes continuam retornando o item removido normalmente.
+- O produto removido não pode ser incluído em novos pedidos nem ter a quantidade aumentada ao editar um pedido.
 
 ## Pedidos
 
@@ -391,7 +414,7 @@ Resposta `200 OK`:
         "cpf": "12345678900",
         "phoneNumber": "85999999999"
       },
-      "paymentMethod": "PENDING",
+      "paymentMethod": "PIX",
       "totalValue": 25.8
     }
   ],
@@ -439,7 +462,7 @@ Resposta `200 OK`:
     "cpf": "12345678900",
     "phoneNumber": "85999999999"
   },
-  "paymentMethod": "PENDING",
+  "paymentMethod": "PIX",
   "totalValue": 25.8
 }
 ```
@@ -479,7 +502,7 @@ Body:
     }
   ],
   "clienteCpf": "12345678900",
-  "paymentMethod": "PENDING"
+  "paymentMethod": "PIX"
 }
 ```
 
@@ -499,8 +522,9 @@ Observações:
 - Cada produto precisa existir.
 - O estoque dos itens é reduzido na criação.
 - O pedido nasce com `status = PENDING`.
-- Com `paymentMethod = PENDING`, mantém `paymentStatus = PENDING`.
-- Com `paymentMethod = PIX` ou `DINHEIRO`, nasce com `paymentStatus = PAID` e registra `paidAt`.
+- `paymentMethod` aceita `PIX` ou `DINHEIRO` e representa apenas a forma escolhida.
+- O pedido sempre nasce com `paymentStatus = PENDING` e `paidAt = null`.
+- O pagamento somente é confirmado por `PATCH /api/orders/{id}/pay`.
 - Publica evento WebSocket em `/topic/kitchen/orders`, pois todo item é preparado na cozinha.
 - Sempre publica evento geral em `/topic/orders` e `/topic/orders/public`.
 
@@ -575,7 +599,10 @@ Observações:
 
 - Não é permitido pagar pedido `CANCELLED`.
 - Se o pedido já estiver pago, retorna o pedido sem alteração.
-- Quando `paymentMethod` é enviado, o backend atualiza o método de pagamento antes de marcar como pago.
+- É permitido confirmar pagamento de pedido já retirado (`FINISHED`) que permaneceu pendente.
+- Sem body, confirma a forma de pagamento já registrada no pedido.
+- Quando `paymentMethod` é enviado, o backend corrige/atualiza a forma antes de marcar como pago.
+- Pedidos legados sem forma registrada exigem `paymentMethod` no body.
 - Registra `paidAt` na primeira confirmação de pagamento.
 - Publica evento `ORDER_PAID` em `/topic/orders`.
 - O evento de pagamento não é publicado em `/topic/orders/public`.
@@ -615,6 +642,7 @@ Path params:
 Observações:
 
 - Só é permitido finalizar pedido com `status = READY_FOR_PICKUP`.
+- A retirada é permitida mesmo com `paymentStatus = PENDING`; o pedido continua nas pendências do dashboard até ser pago.
 - Atualiza `status` para `FINISHED`.
 - Registra `finishedAt`, usado para contar finalizações ocorridas hoje.
 - Publica evento geral em `/topic/orders` e `/topic/orders/public`.
@@ -740,7 +768,7 @@ Regras das métricas:
 | `POST` | `/api/products` | Cria produto. | Sim - gestão de produtos. |
 | `PUT` | `/api/products/{id}` | Atualiza produto. | Sim - gestão de produtos. |
 | `PATCH` | `/api/products/{id}/stock` | Ajusta estoque do produto. | Sim - gestão de produtos. |
-| `DELETE` | `/api/products/{id}` | Remove produto. | Sim - gestão de produtos. |
+| `DELETE` | `/api/products/{id}` | Retira produto do catálogo preservando pedidos existentes. | Sim - gestão de produtos. |
 | `GET` | `/api/orders` | Lista pedidos com filtros. | Sim - home, painel, cozinha, detalhamento e dashboard. |
 | `GET` | `/api/orders/{id}` | Busca pedido por ID. | Sim - cozinha e detalhamento. |
 | `GET` | `/api/orders/client/{cpf}` | Lista pedidos por CPF do cliente. | Não. |

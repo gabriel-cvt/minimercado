@@ -104,7 +104,6 @@ public class DashboardServiceImpl implements DashboardService {
 
     private List<PaymentMethodMetricDTO> paymentMethods(List<Order> paidOrders) {
         return Arrays.stream(PaymentMethod.values())
-                .filter(paymentMethod -> paymentMethod != PaymentMethod.PENDING)
                 .map(paymentMethod -> new PaymentMethodMetricDTO(
                         paymentMethod.name(),
                         paidOrders.stream()

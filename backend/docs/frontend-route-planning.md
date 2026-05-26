@@ -15,12 +15,12 @@ O contrato detalhado das rotas está em `api-routes.md` e `websocket-routes.md`.
 | --- | --- | --- |
 | Identificação e cadastro rápido do cliente, incluindo telefone | `GET /api/clients/cpf/{cpf}`, `POST /api/clients` | Integrado. |
 | Gestão de produtos | `GET /api/products`, `GET /api/products/{id}`, `POST /api/products`, `PUT /api/products/{id}`, `PATCH /api/products/{id}/stock`, `DELETE /api/products/{id}` | Integrado na tela dedicada de produtos. |
-| Checkout | `POST /api/orders` | Integrado. |
-| Detalhamento operacional | `GET /api/orders`, `GET /api/orders/{id}`, `PUT /api/orders/{id}`, `PATCH /api/orders/{id}/pay`, `PATCH /api/orders/{id}/finish`, `PATCH /api/orders/{id}/cancel`, `/topic/orders` | Integrado; edição de pedido pronto o devolve à cozinha, e ações inconsistentes em pedidos pagos são bloqueadas até existir estorno. |
+| Checkout | `POST /api/orders` | Integrado; registra PIX ou dinheiro, mantendo pagamento pendente até confirmação. |
+| Detalhamento operacional | `GET /api/orders`, `GET /api/orders/{id}`, `PUT /api/orders/{id}`, `PATCH /api/orders/{id}/pay`, `PATCH /api/orders/{id}/finish`, `PATCH /api/orders/{id}/cancel`, `/topic/orders` | Integrado; edição de pedido pronto o devolve à cozinha, retirada pode ocorrer pendente e ações inconsistentes em pedidos pagos são bloqueadas até existir estorno. |
 | Cozinha | `GET /api/orders?status=PENDING`, `PATCH /api/orders/{id}/ready`, `/topic/kitchen/orders`, `/topic/orders`, `/topic/pickup/orders` | Integrado. |
 | Painel público | `GET /api/orders` filtrado, `/topic/orders/public`, `readyAt` | Integrado; chamados prontos são exibidos por 5 minutos. |
 | Home e dashboard básico | `GET /api/dashboard/summary`, `GET /api/orders`, `/topic/orders` | Integrado. |
-| Analytics e pendências do dashboard | `GET /api/dashboard/analytics?days=3`, `GET /api/orders`, `PATCH /api/orders/{id}/pay` | Integrado; inclui tempo médio, rankings e confirmação agrupada de pagamentos pendentes. |
+| Analytics e pendências do dashboard | `GET /api/dashboard/analytics?days=3`, `GET /api/orders`, `PATCH /api/orders/{id}/pay` | Integrado; inclui tempo médio, rankings e confirmação agrupada de pendências, inclusive pedidos já retirados. |
 
 ## Suporte backend implementado para painel e dashboard
 
