@@ -18,6 +18,7 @@ import com.minimercado.backend.model.Client;
 import com.minimercado.backend.model.Order;
 import com.minimercado.backend.model.OrderItem;
 import com.minimercado.backend.model.Product;
+import com.minimercado.backend.model.ProductVariant;
 import com.minimercado.backend.repository.OrderRepository;
 import com.minimercado.backend.repository.ProductRepository;
 import com.minimercado.backend.service.client.ClientService;
@@ -33,6 +34,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -85,6 +87,7 @@ public class OrderServiceImpl implements OrderService{
         order.setItems(buildOrderItems(data.items(), order, true));
         decreaseStock(order.getItems());
         order.setPaymentMethod(data.paymentMethod());
+        order.setObservation(normalizeObservation(data.observation()));
         order.calculateTotal();
         
         Order savedOrder = orderRepository.save(order);
@@ -117,11 +120,13 @@ public class OrderServiceImpl implements OrderService{
         if (data.paymentMethod() != null) {
             order.setPaymentMethod(data.paymentMethod());
         }
+        order.setObservation(normalizeObservation(data.observation()));
 
         applyStockChangesForUpdate(order, data.items());
+        List<OrderItem> updatedItems = buildOrderItems(data.items(), order, false);
 
         order.getItems().clear();
-        order.getItems().addAll(buildOrderItems(data.items(), order, false));
+        order.getItems().addAll(updatedItems);
         order.calculateTotal();
 
         if (previousStatus == OrderStatus.READY_FOR_PICKUP) {
@@ -264,15 +269,84 @@ public class OrderServiceImpl implements OrderService{
     }
 
     private List<OrderItem> buildOrderItems(List<OrderItemRequestDTO> items, Order order, boolean requireActiveProduct) {
+        Map<String, Integer> remainingReservedVariants = new HashMap<>();
+        List<OrderItem> currentItems = order.getItems() == null ? List.of() : order.getItems();
+        currentItems.stream()
+                .filter(item -> item.getSelectedVariantId() != null)
+                .forEach(item -> remainingReservedVariants.merge(
+                        variantReservationKey(item.getProduct().getId(), item.getSelectedVariantId()),
+                        item.getQuantity(),
+                        Integer::sum
+                ));
+
         return new ArrayList<>(items.stream()
                 .map(itemDto -> {
                     validateOrderItemQuantity(itemDto.quantity());
                     Product product = requireActiveProduct
                             ? findOrderableProductById(itemDto.productId())
                             : findProductById(itemDto.productId());
-                    return new OrderItem(product, order, itemDto.quantity());
+                    ProductVariant selectedVariant = resolveSelectedVariant(product, itemDto.selectedVariantId());
+                    validateVariantAvailability(
+                            product,
+                            selectedVariant,
+                            itemDto.quantity(),
+                            remainingReservedVariants
+                    );
+                    return new OrderItem(
+                            product,
+                            order,
+                            itemDto.quantity(),
+                            selectedVariant
+                    );
                 })
                 .toList());
+    }
+
+    private ProductVariant resolveSelectedVariant(Product product, Long selectedVariantId) {
+        if (!Boolean.TRUE.equals(product.getHasVariants())) {
+            if (selectedVariantId != null) {
+                throw new IllegalArgumentException("O produto informado nao possui variantes");
+            }
+            return null;
+        }
+
+        if (selectedVariantId == null) {
+            if (Boolean.TRUE.equals(product.getVariantSelectionRequired())) {
+                throw new IllegalArgumentException("Selecione " + product.getVariantType() + " para " + product.getName());
+            }
+            return null;
+        }
+
+        ProductVariant variant = product.getVariants().stream()
+                .filter(item -> item.getId().equals(selectedVariantId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("A variante nao pertence ao produto informado"));
+        return variant;
+    }
+
+    private void validateVariantAvailability(
+            Product product,
+            ProductVariant variant,
+            Integer quantity,
+            Map<String, Integer> remainingReservedVariants) {
+        if (variant == null || Boolean.TRUE.equals(variant.getAvailable())) {
+            return;
+        }
+
+        String key = variantReservationKey(product.getId(), variant.getId());
+        int reservedQuantity = remainingReservedVariants.getOrDefault(key, 0);
+        if (reservedQuantity < quantity) {
+            throw new IllegalStateException("A variante " + variant.getName() + " esta indisponivel");
+        }
+        remainingReservedVariants.put(key, reservedQuantity - quantity);
+    }
+
+    private String variantReservationKey(Long productId, Long variantId) {
+        return productId + ":" + variantId;
+    }
+
+    private String normalizeObservation(String observation) {
+        return observation == null || observation.isBlank() ? null : observation.trim();
     }
 
     private void decreaseStock(List<OrderItem> items) {
@@ -335,7 +409,8 @@ public class OrderServiceImpl implements OrderService{
                 new OrderKitchenEvent(
                         order.getId(),
                         eventType,
-                        buildKitchenItems(order)
+                        buildKitchenItems(order),
+                        order.getObservation()
                 )
         );
     }
@@ -345,7 +420,8 @@ public class OrderServiceImpl implements OrderService{
                 .map(item -> new OrderKitchenItemDTO(
                         item.getProduct().getId(),
                         item.getProduct().getName(),
-                        item.getQuantity()
+                        item.getQuantity(),
+                        item.getSelectedVariantName()
                 ))
                 .toList();
     }

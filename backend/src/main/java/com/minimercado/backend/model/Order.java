@@ -51,6 +51,8 @@ public class Order {
 
     private Double totalValue;
 
+    @Column(length = 500)
+    private String observation;
 
     public void calculateTotal() {
         this.totalValue = this.items

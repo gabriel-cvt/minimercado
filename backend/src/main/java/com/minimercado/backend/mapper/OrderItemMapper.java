@@ -17,7 +17,9 @@ public class OrderItemMapper {
                 item.getProduct().getName(),
                 item.getUnitPrice(),
                 item.getQuantity(),
-                item.getSubtotal()
+                item.getSubtotal(),
+                item.getSelectedVariantId(),
+                item.getSelectedVariantName()
         );
     }
 }

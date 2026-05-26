@@ -7,6 +7,7 @@ import java.util.List;
 public record OrderKitchenEvent(
         Long orderId,
         OrderKitchenEventType type,
-        List<OrderKitchenItemDTO> items
+        List<OrderKitchenItemDTO> items,
+        String observation
 ) {
 }

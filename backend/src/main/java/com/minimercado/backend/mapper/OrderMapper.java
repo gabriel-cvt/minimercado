@@ -39,7 +39,8 @@ public class OrderMapper {
                 items,
                 clientMapper.toResponse(order.getClient()),
                 order.getPaymentMethod(),
-                order.getTotalValue()
+                order.getTotalValue(),
+                order.getObservation()
         );
     }
 }

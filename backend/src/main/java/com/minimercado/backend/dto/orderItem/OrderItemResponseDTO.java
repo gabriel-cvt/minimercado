@@ -5,6 +5,8 @@ public record OrderItemResponseDTO(
         String productName,
         Double unitPrice,
         Integer quantity,
-        Double subtotal
+        Double subtotal,
+        Long selectedVariantId,
+        String selectedVariantName
 ) {
 }

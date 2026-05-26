@@ -4,6 +4,7 @@ import com.minimercado.backend.dto.orderItem.OrderItemRequestDTO;
 import com.minimercado.backend.enums.PaymentMethod;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public record OrderPutDTO(
@@ -13,5 +14,8 @@ public record OrderPutDTO(
         @NotNull(message = "O cpf do cliente é obrigatório")
         String clienteCpf,
 
-        PaymentMethod paymentMethod
+        PaymentMethod paymentMethod,
+
+        @Size(max = 500)
+        String observation
 ) {}

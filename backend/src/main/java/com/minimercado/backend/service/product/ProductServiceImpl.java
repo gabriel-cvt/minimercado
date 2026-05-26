@@ -3,8 +3,10 @@ package com.minimercado.backend.service.product;
 import com.minimercado.backend.dto.product.ProductPostDTO;
 import com.minimercado.backend.dto.product.ProductPutDTO;
 import com.minimercado.backend.dto.product.ProductResponseDTO;
+import com.minimercado.backend.dto.product.ProductVariantInputDTO;
 import com.minimercado.backend.mapper.ProductMapper;
 import com.minimercado.backend.model.Product;
+import com.minimercado.backend.model.ProductVariant;
 import com.minimercado.backend.repository.ProductRepository;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.criteria.Predicate;
@@ -16,7 +18,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -93,12 +100,20 @@ public class ProductServiceImpl implements ProductService {
     private Product buildProduct(ProductPostDTO data) {
         validateStockQuantity(data.stockQuantity());
 
-        return new Product(
+        Product product = new Product(
                 data.name(),
                 data.price(),
                 data.urlImage(),
                 data.stockQuantity()
         );
+        configureProduct(
+                product,
+                data.hasVariants(),
+                data.variantType(),
+                data.variantSelectionRequired(),
+                data.variants()
+        );
+        return product;
     }
 
     private void updateProductFields(Product product, ProductPutDTO data) {
@@ -114,6 +129,87 @@ public class ProductServiceImpl implements ProductService {
             product.setUrlImage(data.urlImage());
         }
 
+        if (data.hasVariants() != null ||
+                data.variantType() != null ||
+                data.variantSelectionRequired() != null ||
+                data.variants() != null) {
+            configureProduct(
+                    product,
+                    data.hasVariants() != null ? data.hasVariants() : product.getHasVariants(),
+                    data.variantType() != null ? data.variantType() : product.getVariantType(),
+                    data.variantSelectionRequired() != null
+                            ? data.variantSelectionRequired()
+                            : product.getVariantSelectionRequired(),
+                    data.variants() != null
+                            ? data.variants()
+                            : product.getVariants().stream()
+                                    .map(variant -> new ProductVariantInputDTO(
+                                            variant.getId(),
+                                            variant.getName(),
+                                            variant.getAvailable()
+                                    ))
+                                    .toList()
+            );
+        }
+    }
+
+    private void configureProduct(
+            Product product,
+            Boolean hasVariants,
+            String variantType,
+            Boolean variantSelectionRequired,
+            List<ProductVariantInputDTO> variants) {
+        boolean resolvedHasVariants = Boolean.TRUE.equals(hasVariants);
+
+        product.setHasVariants(resolvedHasVariants);
+
+        if (resolvedHasVariants) {
+            if (variantType == null || variantType.isBlank()) {
+                throw new IllegalArgumentException("Informe o tipo de variacao do produto");
+            }
+            if (variants == null || variants.isEmpty()) {
+                throw new IllegalArgumentException("Informe ao menos uma variante do produto");
+            }
+            validateVariantNames(variants);
+            product.setVariantType(variantType.trim());
+            product.setVariantSelectionRequired(Boolean.TRUE.equals(variantSelectionRequired));
+            product.replaceVariants(buildVariants(product, variants));
+        } else {
+            product.setVariantType(null);
+            product.setVariantSelectionRequired(false);
+            product.replaceVariants(List.of());
+        }
+    }
+
+    private void validateVariantNames(List<ProductVariantInputDTO> variants) {
+        Set<String> names = new HashSet<>();
+        for (ProductVariantInputDTO variant : variants) {
+            String name = variant.name().trim().toLowerCase();
+            if (!names.add(name)) {
+                throw new IllegalArgumentException("Nao podem existir variantes repetidas");
+            }
+        }
+    }
+
+    private List<ProductVariant> buildVariants(Product product, List<ProductVariantInputDTO> variants) {
+        Map<Long, ProductVariant> existingVariants = product.getVariants().stream()
+                .collect(Collectors.toMap(ProductVariant::getId, Function.identity()));
+
+        return variants.stream()
+                .map(input -> {
+                    if (input.id() == null) {
+                        return new ProductVariant(product, input.name().trim(), input.available());
+                    }
+
+                    ProductVariant existing = existingVariants.get(input.id());
+                    if (existing == null) {
+                        throw new IllegalArgumentException("A variante nao pertence ao produto informado");
+                    }
+                    existing.setName(input.name().trim());
+                    existing.setAvailable(input.available() == null || input.available());
+                    return existing;
+                })
+                .toList();
     }
 
     private void applyStockChange(Product product, Integer quantityChange) {

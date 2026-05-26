@@ -5,6 +5,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Entity
 @Table(name = "products")
 @Getter @Setter
@@ -29,9 +32,16 @@ public class Product {
     @Column(nullable = false)
     private Boolean active = true;
 
-    @ManyToOne
-    @JoinColumn(name = "order_id")
-    private Order order;
+    @Column(nullable = false)
+    private Boolean hasVariants = false;
+
+    private String variantType;
+
+    @Column(nullable = false)
+    private Boolean variantSelectionRequired = false;
+
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ProductVariant> variants = new ArrayList<>();
 
     public Product(String name, Double price) {
         this.name = name;
@@ -43,6 +53,11 @@ public class Product {
         this.price = price;
         this.urlImage = urlImage;
         this.stockQuantity = stockQuantity;
+    }
+
+    public void replaceVariants(List<ProductVariant> nextVariants) {
+        this.variants.clear();
+        this.variants.addAll(nextVariants);
     }
 
     public void decreaseStock(Integer quantity) {

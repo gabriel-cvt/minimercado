@@ -21,5 +21,6 @@ public record OrderResponseDTO(
         List<OrderItemResponseDTO> items,
         ClientResponseDTO client,
         PaymentMethod paymentMethod,
-        Double totalValue
+        Double totalValue,
+        String observation
 ) {}

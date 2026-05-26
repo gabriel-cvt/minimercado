@@ -116,10 +116,12 @@ Payload:
   "items": [
     {
       "productId": 10,
-      "productName": "Sanduíche",
-      "quantity": 2
+      "productName": "Tapioca",
+      "quantity": 1,
+      "selectedVariantName": "Frango"
     }
-  ]
+  ],
+  "observation": "Sem cebola"
 }
 ```
 
@@ -131,6 +133,8 @@ Campos:
 - `items[].productId`: identificador do produto.
 - `items[].productName`: nome do produto.
 - `items[].quantity`: quantidade solicitada.
+- `items[].selectedVariantName`: sabor ou tipo selecionado, quando houver.
+- `observation`: observação geral enviada para o preparo, quando informada.
 
 Quando é publicado:
 
