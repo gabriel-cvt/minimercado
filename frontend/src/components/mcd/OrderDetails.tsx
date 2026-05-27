@@ -85,6 +85,9 @@ export function OrderDetails() {
     queryFn: () => getOrders({ size: 100, sort: "orderTime,desc" }),
   });
   const orders = useMemo(() => ordersQuery.data?.content ?? [], [ordersQuery.data]);
+  const hasLiveOrders = orders.some(
+    (order) => order.status !== "FINISHED" && order.status !== "CANCELLED",
+  );
   const detailQuery = useQuery({
     queryKey: ["orders", "detail", selectedId],
     queryFn: () => getOrder(selectedId!),
@@ -92,9 +95,10 @@ export function OrderDetails() {
   });
 
   useEffect(() => {
+    if (!hasLiveOrders) return;
     const timer = setInterval(() => force((value) => value + 1), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [hasLiveOrders]);
 
   useEffect(() => {
     if (selectedId === null && orders[0]) setSelectedId(orders[0].id);
@@ -1065,7 +1069,7 @@ function OrderListButton({
 }) {
   const config = statusConfig[order.status];
   const Icon = config.Icon;
-  const elapsed = Math.floor((Date.now() - new Date(order.orderTime).getTime()) / 1000);
+  const elapsedText = orderElapsedText(order);
   return (
     <motion.button
       layout
@@ -1085,16 +1089,38 @@ function OrderListButton({
       </div>
       <p className="font-semibold text-sm truncate">{order.client.name}</p>
       <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1">
-          <Clock className="w-3 h-3" /> {fmtElapsed(elapsed)}
-        </span>
-        <span>
+        {elapsedText && (
+          <span className="inline-flex items-center gap-1">
+            <Clock className="w-3 h-3" /> {elapsedText}
+          </span>
+        )}
+        <span className="ml-auto">
           {order.items.reduce((sum, item) => sum + item.quantity, 0)} itens ·{" "}
           <strong className="text-foreground">{formatBRL(order.totalValue)}</strong>
         </span>
       </div>
     </motion.button>
   );
+}
+
+function orderElapsedText(order: ApiOrder) {
+  const terminalTimestamp =
+    order.status === "FINISHED"
+      ? order.finishedAt
+      : order.status === "CANCELLED"
+        ? order.cancelledAt
+        : null;
+  const isTerminal = order.status === "FINISHED" || order.status === "CANCELLED";
+
+  if (isTerminal && !terminalTimestamp) return null;
+
+  const start = new Date(order.orderTime).getTime();
+  const end = terminalTimestamp ? new Date(terminalTimestamp).getTime() : Date.now();
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+
+  const elapsed = Math.max(0, Math.floor((end - start) / 1000));
+  const duration = fmtElapsed(elapsed);
+  return isTerminal ? `Duração: ${duration}` : duration;
 }
 
 function StatusNotice({ status }: { status: ApiOrderStatus }) {
