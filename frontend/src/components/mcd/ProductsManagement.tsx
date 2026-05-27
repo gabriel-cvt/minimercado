@@ -7,7 +7,6 @@ import { z } from "zod";
 import {
   AlertTriangle,
   Boxes,
-  ImageIcon,
   Package,
   PackagePlus,
   Pencil,
@@ -27,15 +26,21 @@ import {
   type ApiProduct,
 } from "@/lib/api";
 import { formatBRL } from "@/lib/format";
+import { ProductVisual } from "@/components/mcd/ProductVisual";
+import { PRODUCT_ICON_OPTIONS } from "@/components/mcd/product-icon-options";
 
-const imageSchema = z
-  .string()
-  .trim()
-  .max(500, "URL muito longa")
-  .refine(
-    (value) => value === "" || z.string().url().safeParse(value).success,
-    "Informe uma URL válida",
-  );
+const productIconSchema = z.enum([
+  "GENERAL",
+  "SANDWICH",
+  "DRINK",
+  "DESSERT",
+  "SNACK",
+  "COMBO",
+  "MEAL",
+  "BAKERY",
+  "FROZEN_DESSERT",
+  "HOT_DRINK",
+]);
 
 const createSchema = z.object({
   name: z.string().trim().min(2, "Nome muito curto").max(80, "Nome muito longo"),
@@ -43,7 +48,7 @@ const createSchema = z.object({
     .number({ invalid_type_error: "Informe um preço" })
     .positive("O preço deve ser maior que 0")
     .max(10000, "Preço muito alto"),
-  urlImage: imageSchema,
+  icon: productIconSchema,
   stockQuantity: z
     .number({ invalid_type_error: "Informe o estoque" })
     .int("Informe um número inteiro")
@@ -137,7 +142,7 @@ export function ProductsManagement() {
       updateProduct(id, {
         name: data.name,
         price: data.price,
-        urlImage: data.urlImage,
+        icon: data.icon,
         hasVariants: data.hasVariants,
         variantType: data.variantType || undefined,
         variantSelectionRequired: data.variantSelectionRequired,
@@ -334,12 +339,7 @@ export function ProductsManagement() {
           <CreateProductModal
             pending={createMutation.isPending}
             onClose={() => setShowCreate(false)}
-            onSubmit={(data) =>
-              createMutation.mutate({
-                ...data,
-                urlImage: data.urlImage || undefined,
-              })
-            }
+            onSubmit={(data) => createMutation.mutate(data)}
           />
         )}
         {editTarget && (
@@ -410,11 +410,7 @@ function ProductCard({
 }) {
   return (
     <article className="bg-card border rounded-3xl overflow-hidden shadow-card flex flex-col">
-      <ProductImage
-        key={product.urlImage ?? "no-image"}
-        url={product.urlImage}
-        alt={product.name}
-      />
+      <ProductVisual icon={product.icon} className="aspect-[16/10]" />
       <div className="p-4 flex-1 flex flex-col gap-3">
         <div className="flex justify-between items-start gap-3">
           <div className="min-w-0">
@@ -477,28 +473,6 @@ function ProductCard({
   );
 }
 
-function ProductImage({ url, alt }: { url?: string; alt: string }) {
-  const [hasError, setHasError] = useState(false);
-
-  return (
-    <div className="aspect-[16/10] bg-muted flex items-center justify-center overflow-hidden">
-      {url && !hasError ? (
-        <img
-          src={url}
-          alt={alt}
-          className="w-full h-full object-cover"
-          onError={() => setHasError(true)}
-        />
-      ) : (
-        <div className="text-muted-foreground flex flex-col items-center gap-2">
-          <ImageIcon className="w-9 h-9" />
-          <span className="text-xs font-semibold">Sem imagem</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function CreateProductModal({
   pending,
   onClose,
@@ -515,7 +489,7 @@ function CreateProductModal({
     formState: { errors },
   } = useForm<CreateFormData>({
     resolver: zodResolver(createSchema),
-    defaultValues: { name: "", price: 0, urlImage: "", stockQuantity: 0 },
+    defaultValues: { name: "", price: 0, icon: "GENERAL", stockQuantity: 0 },
   });
   const [configuration, setConfiguration] = useState<ProductConfiguration>(
     emptyProductConfiguration(),
@@ -543,8 +517,8 @@ function CreateProductModal({
           nameError={errors.name?.message}
           priceField={register("price", { valueAsNumber: true })}
           priceError={errors.price?.message}
-          imageField={register("urlImage")}
-          imageError={errors.urlImage?.message}
+          iconField={register("icon")}
+          iconError={errors.icon?.message}
           stockField={register("stockQuantity", { valueAsNumber: true })}
           stockError={errors.stockQuantity?.message}
         />
@@ -552,7 +526,7 @@ function CreateProductModal({
           <p className="text-xs uppercase tracking-wider font-bold text-muted-foreground mb-2">
             Pré-visualização
           </p>
-          <ProductImage key={watch("urlImage")} url={watch("urlImage")} alt="Pré-visualização" />
+          <ProductVisual icon={watch("icon")} className="aspect-[16/10] rounded-2xl" />
         </div>
         <ProductConfigurationFields
           configuration={configuration}
@@ -589,7 +563,7 @@ function EditProductModal({
     defaultValues: {
       name: product.name,
       price: product.price,
-      urlImage: product.urlImage ?? "",
+      icon: product.icon,
     },
   });
   const [configuration, setConfiguration] = useState<ProductConfiguration>({
@@ -625,14 +599,14 @@ function EditProductModal({
           nameError={errors.name?.message}
           priceField={register("price", { valueAsNumber: true })}
           priceError={errors.price?.message}
-          imageField={register("urlImage")}
-          imageError={errors.urlImage?.message}
+          iconField={register("icon")}
+          iconError={errors.icon?.message}
         />
         <div>
           <p className="text-xs uppercase tracking-wider font-bold text-muted-foreground mb-2">
             Pré-visualização
           </p>
-          <ProductImage key={watch("urlImage")} url={watch("urlImage")} alt={product.name} />
+          <ProductVisual icon={watch("icon")} className="aspect-[16/10] rounded-2xl" />
           <p className="mt-3 text-sm font-semibold text-muted-foreground">
             Estoque atual: {product.stockQuantity}
           </p>
@@ -656,8 +630,8 @@ function ProductFields({
   nameError,
   priceField,
   priceError,
-  imageField,
-  imageError,
+  iconField,
+  iconError,
   stockField,
   stockError,
 }: {
@@ -665,8 +639,8 @@ function ProductFields({
   nameError?: string;
   priceField: UseFormRegisterReturn;
   priceError?: string;
-  imageField: UseFormRegisterReturn;
-  imageError?: string;
+  iconField: UseFormRegisterReturn;
+  iconError?: string;
   stockField?: UseFormRegisterReturn;
   stockError?: string;
 }) {
@@ -685,8 +659,14 @@ function ProductFields({
           </Field>
         )}
       </div>
-      <Field label="URL da imagem" error={imageError}>
-        <input {...imageField} placeholder="https://... (opcional)" className="input" />
+      <Field label="Ícone do produto" error={iconError}>
+        <select {...iconField} className="input">
+          {PRODUCT_ICON_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </Field>
     </div>
   );

@@ -43,7 +43,17 @@ export const Route = createFileRoute("/dashboard")({
   component: DashboardPage,
 });
 
-const COLORS = ["var(--primary)", "#f5b800", "#22c55e", "#ef4444"];
+const PAYMENT_COLORS: Record<string, string> = {
+  PIX: "var(--chart-2)",
+  Dinheiro: "var(--status-finished)",
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  "Em preparo": "var(--status-preparing)",
+  Pronto: "var(--chart-2)",
+  Finalizado: "var(--status-finished)",
+  Cancelado: "var(--destructive)",
+};
 
 function DashboardPage() {
   const queryClient = useQueryClient();
@@ -54,8 +64,8 @@ function DashboardPage() {
     queryFn: getDashboardSummary,
   });
   const analyticsQuery = useQuery({
-    queryKey: ["dashboard", "analytics", 3],
-    queryFn: () => getDashboardAnalytics(3),
+    queryKey: ["dashboard", "analytics"],
+    queryFn: getDashboardAnalytics,
   });
   const ordersQuery = useQuery({
     queryKey: ["orders", "dashboard"],
@@ -103,22 +113,33 @@ function DashboardPage() {
   );
 
   return (
-    <div className="max-w-7xl mx-auto px-4 md:px-6 py-8 space-y-8">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-primary font-bold uppercase tracking-wider text-xs mb-1">
-            Painel administrativo
-          </p>
-          <h1 className="text-3xl md:text-4xl font-black">Dashboard McDominus</h1>
-          <p className="text-muted-foreground">Métricas operacionais e financeiras em tempo real</p>
-        </div>
-        <div className="text-sm text-muted-foreground font-medium flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-status-finished animate-pulse" /> Dados da API
-        </div>
+    <div className="relative isolate max-w-7xl mx-auto px-4 md:px-6 py-8 space-y-8">
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute -left-24 top-28 h-80 w-80 rounded-full bg-primary/[0.08] blur-3xl" />
+        <div className="absolute right-0 top-20 h-96 w-96 rounded-full bg-status-preparing/[0.13] blur-3xl" />
+        <div className="absolute bottom-12 left-1/3 h-72 w-72 rounded-full bg-chart-2/[0.08] blur-3xl" />
       </div>
+      <section className="relative overflow-hidden rounded-3xl border border-white/75 bg-white/55 p-6 shadow-[0_16px_46px_-24px_oklch(0.18_0.02_30_/_0.24)] backdrop-blur-2xl md:p-7">
+        <div className="pointer-events-none absolute -right-16 -top-24 h-56 w-56 rounded-full bg-status-preparing/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-28 left-1/3 h-48 w-48 rounded-full bg-primary/10 blur-3xl" />
+        <div className="relative flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-primary font-bold uppercase tracking-wider text-xs mb-1">
+              Painel administrativo
+            </p>
+            <h1 className="text-3xl md:text-4xl font-black">Dashboard McDominus</h1>
+            <p className="text-muted-foreground">
+              Métricas operacionais e financeiras em tempo real
+            </p>
+          </div>
+          <div className="flex items-center gap-2 rounded-full border border-white/80 bg-white/45 px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm backdrop-blur-xl">
+            <span className="w-2 h-2 rounded-full bg-status-finished animate-pulse" /> Dados da API
+          </div>
+        </div>
+      </section>
 
       {(summaryQuery.isError || analyticsQuery.isError || ordersQuery.isError) && (
-        <div className="rounded-xl border border-destructive/25 bg-destructive/10 px-4 py-3 text-destructive font-medium">
+        <div className="rounded-xl border border-destructive/20 bg-white/55 px-4 py-3 font-medium text-destructive shadow-card backdrop-blur-xl">
           Parte dos dados não pôde ser atualizada.
         </div>
       )}
@@ -170,10 +191,15 @@ function DashboardPage() {
       </div>
 
       <div className="grid lg:grid-cols-3 gap-5">
-        <Panel title="Top produtos (últimos 3 dias)" className="lg:col-span-2">
+        <Panel
+          title="Top produtos"
+          subtitle="Itens com maior saída no histórico"
+          tone="brand"
+          className="lg:col-span-2"
+        >
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={analytics?.topProducts ?? []} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" strokeOpacity={0.7} />
               <XAxis type="number" stroke="var(--muted-foreground)" fontSize={12} />
               <YAxis
                 type="category"
@@ -193,7 +219,7 @@ function DashboardPage() {
           </ResponsiveContainer>
         </Panel>
 
-        <Panel title="Métodos de pagamento">
+        <Panel title="Métodos de pagamento" subtitle="Pagamentos confirmados" tone="finance">
           <ResponsiveContainer width="100%" height={280}>
             <PieChart>
               <Pie
@@ -206,8 +232,8 @@ function DashboardPage() {
                 outerRadius={90}
                 paddingAngle={4}
               >
-                {paymentMethods.map((item, index) => (
-                  <Cell key={item.name} fill={COLORS[index]} />
+                {paymentMethods.map((item) => (
+                  <Cell key={item.name} fill={PAYMENT_COLORS[item.name] ?? "var(--chart-3)"} />
                 ))}
               </Pie>
               <Tooltip contentStyle={tooltipStyle} />
@@ -216,19 +242,28 @@ function DashboardPage() {
           </ResponsiveContainer>
         </Panel>
 
-        <Panel title="Pedidos por hora (últimos 3 dias)" className="lg:col-span-2">
+        <Panel
+          title="Pedidos por hora"
+          subtitle="Picos de demanda no histórico da operação"
+          tone="operations"
+          className="lg:col-span-2"
+        >
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={ordersByHour}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" strokeOpacity={0.7} />
               <XAxis dataKey="hour" stroke="var(--muted-foreground)" fontSize={11} />
               <YAxis stroke="var(--muted-foreground)" fontSize={11} />
               <Tooltip contentStyle={tooltipStyle} />
-              <Bar dataKey="count" fill="var(--primary)" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="count" fill="var(--chart-2)" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </Panel>
 
-        <Panel title="Status dos pedidos carregados">
+        <Panel
+          title="Status dos pedidos carregados"
+          subtitle="Leitura atual da operação"
+          tone="status"
+        >
           <ResponsiveContainer width="100%" height={240}>
             <PieChart>
               <Pie
@@ -239,8 +274,8 @@ function DashboardPage() {
                 cy="50%"
                 outerRadius={82}
               >
-                {data.statuses.map((item, index) => (
-                  <Cell key={item.name} fill={COLORS[index]} />
+                {data.statuses.map((item) => (
+                  <Cell key={item.name} fill={STATUS_COLORS[item.name] ?? "var(--chart-3)"} />
                 ))}
               </Pie>
               <Tooltip contentStyle={tooltipStyle} />
@@ -250,7 +285,11 @@ function DashboardPage() {
         </Panel>
       </div>
 
-      <Panel title="Top clientes (últimos 3 dias)">
+      <Panel
+        title="Top clientes"
+        subtitle="Clientes por pagamentos confirmados no histórico"
+        tone="finance"
+      >
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -265,14 +304,14 @@ function DashboardPage() {
               {(analytics?.topClients ?? []).length === 0 ? (
                 <tr>
                   <td colSpan={4} className="py-10 text-center text-muted-foreground">
-                    Nenhum pagamento confirmado no período.
+                    Nenhum pagamento confirmado.
                   </td>
                 </tr>
               ) : (
                 analytics!.topClients.map((client) => (
                   <tr
                     key={client.clientId}
-                    className="border-b hover:bg-muted/40 transition-colors"
+                    className="border-b hover:bg-white/45 transition-colors"
                   >
                     <td className="py-3 pr-4 font-bold">{client.name}</td>
                     <td className="py-3 pr-4 font-mono text-muted-foreground">
@@ -290,7 +329,11 @@ function DashboardPage() {
         </div>
       </Panel>
 
-      <Panel title="Clientes com pagamento pendente">
+      <Panel
+        title="Clientes com pagamento pendente"
+        subtitle="Cobranças que ainda precisam de confirmação"
+        tone="warning"
+      >
         <div className="mb-4 flex items-center gap-3">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -298,7 +341,7 @@ function DashboardPage() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Buscar por nome ou CPF..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border-2 border-input bg-background text-sm focus:border-primary focus:outline-none"
+              className="w-full rounded-xl border border-white/80 bg-white/45 py-2.5 pl-10 pr-4 text-sm shadow-sm backdrop-blur-md focus:border-primary focus:outline-none"
             />
           </div>
           <span className="text-xs font-bold text-muted-foreground">
@@ -326,7 +369,7 @@ function DashboardPage() {
                 </tr>
               ) : (
                 filteredPending.map((pending) => (
-                  <tr key={pending.cpf} className="border-b hover:bg-muted/40 transition-colors">
+                  <tr key={pending.cpf} className="border-b hover:bg-white/45 transition-colors">
                     <td className="py-3 pr-4 font-bold">{pending.name}</td>
                     <td className="py-3 pr-4 font-mono text-muted-foreground">
                       {formatCPF(pending.cpf)}
@@ -368,27 +411,27 @@ function DashboardPage() {
               animate={{ scale: 1 }}
               exit={{ scale: 0.9 }}
               onClick={(event) => event.stopPropagation()}
-              className="bg-card rounded-3xl shadow-elegant max-w-md w-full p-6"
+              className="w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-elegant"
             >
               <h3 className="text-xl font-black mb-2">Confirmar pagamentos</h3>
               <p className="text-muted-foreground text-sm mb-5">
                 {pendingTarget.name} possui {pendingTarget.count} pedido(s) pendente(s), no valor
                 total de {formatBRL(pendingTarget.amount)}.
               </p>
-              <p className="rounded-xl bg-muted px-4 py-3 text-sm font-semibold mb-5">
+              <p className="mb-5 rounded-xl border border-border bg-muted px-4 py-3 text-sm font-semibold">
                 A confirmação preservará a forma de pagamento informada em cada pedido.
               </p>
               <div className="flex gap-3">
                 <button
                   onClick={() => setPendingTarget(null)}
-                  className="flex-1 py-3 rounded-xl border-2 font-bold hover:bg-muted"
+                  className="flex-1 rounded-xl border-2 border-border py-3 font-bold transition-colors hover:border-primary/30 hover:bg-muted"
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={() => paymentMutation.mutate(pendingTarget.orderIds)}
                   disabled={paymentMutation.isPending}
-                  className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-50"
+                  className="flex-1 rounded-xl bg-primary py-3 font-bold text-primary-foreground shadow-sm transition-colors hover:bg-primary-glow disabled:opacity-50"
                 >
                   Confirmar
                 </button>
@@ -407,9 +450,10 @@ function DashboardPage() {
 }
 
 const tooltipStyle = {
-  background: "var(--card)",
+  background: "color-mix(in oklch, var(--card), white 18%)",
   border: "1px solid var(--border)",
-  borderRadius: "12px",
+  borderRadius: "14px",
+  boxShadow: "var(--shadow-card)",
   fontSize: "12px",
   fontWeight: 600,
 };
@@ -425,44 +469,93 @@ function KPI({
   icon: typeof Clock;
   tone: "primary" | "success" | "warning" | "danger";
 }) {
-  const toneClass =
+  const style =
     tone === "primary"
-      ? "text-primary bg-primary/10"
+      ? {
+          icon: "text-primary bg-primary/10",
+          glow: "bg-primary/[0.10]",
+        }
       : tone === "success"
-        ? "text-status-finished bg-status-finished/15"
+        ? {
+            icon: "text-status-finished bg-status-finished/15",
+            glow: "bg-status-finished/[0.11]",
+          }
         : tone === "warning"
-          ? "text-status-preparing bg-status-preparing/15"
-          : "text-destructive bg-destructive/15";
+          ? {
+              icon: "text-status-assembly bg-status-preparing/20",
+              glow: "bg-status-preparing/[0.14]",
+            }
+          : {
+              icon: "text-destructive bg-destructive/10",
+              glow: "bg-destructive/[0.09]",
+            };
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-card rounded-2xl border shadow-card p-5 hover:shadow-elegant transition-shadow"
+      className="relative overflow-hidden rounded-2xl border border-white/75 bg-white/55 p-5 shadow-[0_14px_34px_-24px_oklch(0.18_0.02_30_/_0.3)] backdrop-blur-xl transition-shadow hover:shadow-elegant"
     >
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${toneClass}`}>
+      <div
+        className={`pointer-events-none absolute -right-7 -top-7 h-20 w-20 rounded-full blur-2xl ${style.glow}`}
+      />
+      <div
+        className={`relative mb-3 flex h-10 w-10 items-center justify-center rounded-xl ${style.icon}`}
+      >
         <Icon className="w-5 h-5" />
       </div>
-      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">
+      <p className="relative mb-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
         {label}
       </p>
-      <p className="text-2xl md:text-3xl font-black tabular-nums">{value}</p>
+      <p className="relative text-2xl font-black tabular-nums md:text-3xl">{value}</p>
     </motion.div>
   );
 }
 
 function Panel({
   title,
+  subtitle,
+  tone = "neutral",
   children,
   className = "",
 }: {
   title: string;
+  subtitle?: string;
+  tone?: "neutral" | "brand" | "finance" | "operations" | "status" | "warning";
   children: React.ReactNode;
   className?: string;
 }) {
+  const style = {
+    neutral: { glow: "bg-muted/30", line: "bg-border" },
+    brand: { glow: "bg-primary/[0.09]", line: "bg-primary" },
+    finance: {
+      glow: "bg-status-finished/[0.09]",
+      line: "bg-status-finished",
+    },
+    operations: { glow: "bg-chart-2/[0.09]", line: "bg-chart-2" },
+    status: {
+      glow: "bg-status-preparing/[0.10]",
+      line: "bg-status-preparing",
+    },
+    warning: { glow: "bg-status-preparing/[0.12]", line: "bg-status-preparing" },
+  };
+  const accent = style[tone];
+
   return (
-    <div className={`bg-card rounded-3xl border shadow-card p-6 ${className}`}>
-      <h3 className="font-black text-lg mb-4">{title}</h3>
-      {children}
+    <div
+      className={`relative overflow-hidden rounded-3xl border border-white/75 bg-white/55 p-6 shadow-[0_16px_42px_-25px_oklch(0.18_0.02_30_/_0.3)] backdrop-blur-xl ${className}`}
+    >
+      <div
+        className={`pointer-events-none absolute -right-20 -top-20 h-44 w-44 rounded-full blur-3xl ${accent.glow}`}
+      />
+      <div
+        className={`pointer-events-none absolute left-6 top-0 h-1 w-20 rounded-b-full ${accent.line}`}
+      />
+      <div className="relative">
+        <h3 className="font-black text-lg">{title}</h3>
+        {subtitle && <p className="mb-4 text-sm text-muted-foreground">{subtitle}</p>}
+        {!subtitle && <div className="mb-4" />}
+        {children}
+      </div>
     </div>
   );
 }

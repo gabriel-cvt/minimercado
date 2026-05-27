@@ -3,6 +3,17 @@ import type { ApiOrderStatus, ApiPaymentStatus } from "@/websocket/websocket-typ
 const API_BASE_URL = import.meta.env?.VITE_API_URL || "http://localhost:8080";
 
 export type ApiPaymentMethod = "PIX" | "DINHEIRO";
+export type ApiProductIcon =
+  | "GENERAL"
+  | "SANDWICH"
+  | "DRINK"
+  | "DESSERT"
+  | "SNACK"
+  | "COMBO"
+  | "MEAL"
+  | "BAKERY"
+  | "FROZEN_DESSERT"
+  | "HOT_DRINK";
 
 export interface ApiProductVariant {
   id: number;
@@ -21,7 +32,7 @@ export interface ApiProduct {
   id: number;
   name: string;
   price: number;
-  urlImage?: string;
+  icon: ApiProductIcon;
   stockQuantity: number;
   hasVariants: boolean;
   variantType: string | null;
@@ -67,7 +78,6 @@ export interface ApiDashboardSummary {
 }
 
 export interface ApiDashboardAnalytics {
-  days: number;
   averagePreparationMinutes: number;
   averageTicket: number;
   paymentMethods: { paymentMethod: ApiPaymentMethod; ordersCount: number }[];
@@ -167,7 +177,7 @@ export function getProducts(
 export interface ProductWriteData {
   name: string;
   price: number;
-  urlImage?: string;
+  icon: ApiProductIcon;
   stockQuantity?: number;
   hasVariants: boolean;
   variantType?: string;
@@ -283,6 +293,6 @@ export function getDashboardSummary() {
   return request<ApiDashboardSummary>("/api/dashboard/summary");
 }
 
-export function getDashboardAnalytics(days = 3) {
-  return request<ApiDashboardAnalytics>(`/api/dashboard/analytics${queryString({ days })}`);
+export function getDashboardAnalytics() {
+  return request<ApiDashboardAnalytics>("/api/dashboard/analytics");
 }

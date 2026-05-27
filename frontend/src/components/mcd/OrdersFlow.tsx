@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -27,6 +27,7 @@ import {
   type ApiProductVariant,
 } from "@/lib/api";
 import { formatBRL, formatCPF, formatPhone, isValidCPF } from "@/lib/format";
+import { ProductVisual } from "@/components/mcd/ProductVisual";
 
 type Step = "cpf" | "register" | "products" | "success";
 type CartLine = {
@@ -35,6 +36,103 @@ type CartLine = {
   selectedVariant?: ApiProductVariant;
   qty: number;
 };
+
+type ActiveStep = Exclude<Step, "success">;
+type StoredCartLine = {
+  productId: number;
+  selectedVariantId?: number;
+  qty: number;
+};
+type StoredOrderDraft = {
+  step: ActiveStep;
+  cpf: string;
+  name: string;
+  phoneNumber: string;
+  search: string;
+  payment: ApiPaymentMethod | null;
+  observation: string;
+  cart: StoredCartLine[];
+  currentCustomer: ApiClient | null;
+};
+
+const ORDER_DRAFT_STORAGE_KEY = "mcdominus.orders.active-draft.v1";
+
+function readOrderDraft(): StoredOrderDraft | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.sessionStorage.getItem(ORDER_DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+
+    const draft = JSON.parse(raw) as Record<string, unknown>;
+    if (draft.step !== "cpf" && draft.step !== "register" && draft.step !== "products") {
+      return null;
+    }
+
+    const customer = draft.currentCustomer as Partial<ApiClient> | null;
+    const currentCustomer =
+      customer &&
+      typeof customer.id === "number" &&
+      typeof customer.name === "string" &&
+      typeof customer.cpf === "string"
+        ? (customer as ApiClient)
+        : null;
+
+    return {
+      step: draft.step,
+      cpf: typeof draft.cpf === "string" ? draft.cpf : "",
+      name: typeof draft.name === "string" ? draft.name : "",
+      phoneNumber: typeof draft.phoneNumber === "string" ? draft.phoneNumber : "",
+      search: typeof draft.search === "string" ? draft.search : "",
+      payment: draft.payment === "PIX" || draft.payment === "DINHEIRO" ? draft.payment : null,
+      observation: typeof draft.observation === "string" ? draft.observation : "",
+      cart: Array.isArray(draft.cart)
+        ? draft.cart.flatMap((line) => {
+            const value = line as Partial<StoredCartLine>;
+            if (
+              !Number.isInteger(value.productId) ||
+              !Number.isInteger(value.qty) ||
+              Number(value.qty) < 1
+            ) {
+              return [];
+            }
+            return [
+              {
+                productId: Number(value.productId),
+                selectedVariantId: Number.isInteger(value.selectedVariantId)
+                  ? Number(value.selectedVariantId)
+                  : undefined,
+                qty: Number(value.qty),
+              },
+            ];
+          })
+        : [],
+      currentCustomer,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function storeOrderDraft(draft: StoredOrderDraft) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.setItem(ORDER_DRAFT_STORAGE_KEY, JSON.stringify(draft));
+  } catch {
+    // Browsers may deny storage in private or restricted sessions.
+  }
+}
+
+function clearOrderDraft() {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.removeItem(ORDER_DRAFT_STORAGE_KEY);
+  } catch {
+    // Keep the order flow usable even when storage is unavailable.
+  }
+}
 
 export function OrdersFlow() {
   const [step, setStep] = useState<Step>("cpf");
@@ -51,12 +149,115 @@ export function OrdersFlow() {
   const [observation, setObservation] = useState("");
   const [currentCustomer, setCurrentCustomer] = useState<ApiClient | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [draftHydrated, setDraftHydrated] = useState(false);
+  const [cartToRestore, setCartToRestore] = useState<StoredCartLine[] | null>(null);
+  const [showNewCustomerConfirmation, setShowNewCustomerConfirmation] = useState(false);
   const queryClient = useQueryClient();
   const productsQuery = useQuery({
     queryKey: ["products", "available"],
     queryFn: () => getProducts({ inStock: true }),
   });
   const products = productsQuery.data?.content ?? [];
+
+  useEffect(() => {
+    const draft = readOrderDraft();
+    if (draft) {
+      const restoredStep = draft.step === "products" && !draft.currentCustomer ? "cpf" : draft.step;
+      setStep(restoredStep);
+      setCpf(draft.cpf);
+      setName(draft.name);
+      setPhoneNumber(draft.phoneNumber);
+      setSearch(draft.search);
+      setPayment(draft.payment);
+      setObservation(draft.observation);
+      setCurrentCustomer(draft.currentCustomer);
+      setCartToRestore(draft.cart);
+    }
+    setDraftHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!draftHydrated || cartToRestore === null || !productsQuery.data) return;
+
+    const restoredCart = cartToRestore.flatMap((storedLine) => {
+      const product = productsQuery.data.content.find((item) => item.id === storedLine.productId);
+      if (!product || product.stockQuantity < 1) return [];
+
+      const selectedVariant = storedLine.selectedVariantId
+        ? product.variants.find(
+            (variant) => variant.id === storedLine.selectedVariantId && variant.available,
+          )
+        : undefined;
+      if (product.variantSelectionRequired && !selectedVariant) return [];
+
+      return [
+        {
+          key: `${product.id}:${selectedVariant?.id ?? "base"}`,
+          product,
+          selectedVariant,
+          qty: Math.min(storedLine.qty, product.stockQuantity),
+        },
+      ];
+    });
+
+    setCart(restoredCart);
+    setCartToRestore(null);
+  }, [cartToRestore, draftHydrated, productsQuery.data]);
+
+  useEffect(() => {
+    if (!draftHydrated) return;
+
+    if (step === "success") {
+      clearOrderDraft();
+      return;
+    }
+
+    const isEmptyStart =
+      step === "cpf" &&
+      !cpf &&
+      !name &&
+      !phoneNumber &&
+      !search &&
+      !payment &&
+      !observation &&
+      cart.length === 0 &&
+      (cartToRestore?.length ?? 0) === 0 &&
+      !currentCustomer;
+    if (isEmptyStart) {
+      clearOrderDraft();
+      return;
+    }
+
+    storeOrderDraft({
+      step,
+      cpf,
+      name,
+      phoneNumber,
+      search,
+      payment,
+      observation,
+      cart:
+        cartToRestore ??
+        cart.map((line) => ({
+          productId: line.product.id,
+          selectedVariantId: line.selectedVariant?.id,
+          qty: line.qty,
+        })),
+      currentCustomer,
+    });
+  }, [
+    cart,
+    cartToRestore,
+    cpf,
+    currentCustomer,
+    draftHydrated,
+    name,
+    observation,
+    payment,
+    phoneNumber,
+    search,
+    step,
+  ]);
 
   const total = cart.reduce((sum, line) => sum + line.product.price * line.qty, 0);
   const totalCount = cart.reduce((sum, line) => sum + line.qty, 0);
@@ -162,6 +363,7 @@ export function OrdersFlow() {
       setPayment(null);
       setCart([]);
       setObservation("");
+      clearOrderDraft();
       await queryClient.invalidateQueries({ queryKey: ["products"] });
       await queryClient.invalidateQueries({ queryKey: ["orders"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -174,15 +376,30 @@ export function OrdersFlow() {
   };
 
   const reset = () => {
+    clearOrderDraft();
     setStep("cpf");
     setCpf("");
     setName("");
     setPhoneNumber("");
     setError("");
+    setSearch("");
+    setShowSummary(false);
+    setPayment(null);
     setPlacedOrder(null);
     setCart([]);
+    setCartToRestore(null);
+    setVariantTarget(null);
     setObservation("");
     setCurrentCustomer(null);
+    setShowNewCustomerConfirmation(false);
+  };
+
+  const startNewCustomer = () => {
+    if (cart.length > 0 || observation.trim() || payment) {
+      setShowNewCustomerConfirmation(true);
+      return;
+    }
+    reset();
   };
 
   const filtered = products.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
@@ -303,8 +520,21 @@ export function OrdersFlow() {
           >
             <div className="bg-gradient-hero text-primary-foreground rounded-3xl overflow-hidden shadow-elegant mb-6">
               <div className="px-6 py-10">
-                <p className="text-white/90 font-medium">Olá, {currentCustomer?.name}</p>
-                <h1 className="text-4xl md:text-5xl font-black mb-4">Monte seu pedido</h1>
+                <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-white/90 font-medium">Olá, {currentCustomer?.name}</p>
+                    <h1 className="text-4xl md:text-5xl font-black">Monte seu pedido</h1>
+                    <p className="mt-2 text-sm text-white/85">
+                      Seu pedido em andamento fica salvo nesta aba.
+                    </p>
+                  </div>
+                  <button
+                    onClick={startNewCustomer}
+                    className="shrink-0 rounded-xl border border-white/30 bg-white/10 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-white/20"
+                  >
+                    Atender outro cliente
+                  </button>
+                </div>
                 <div className="relative max-w-md">
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                   <input
@@ -318,6 +548,9 @@ export function OrdersFlow() {
             </div>
             {productsQuery.isLoading && (
               <p className="mb-5 text-muted-foreground font-medium">Carregando produtos...</p>
+            )}
+            {cartToRestore !== null && (
+              <p className="mb-5 text-primary font-medium">Retomando pedido em andamento...</p>
             )}
             {productsQuery.isError && (
               <p className="mb-5 text-destructive font-medium">
@@ -343,16 +576,7 @@ export function OrdersFlow() {
                     whileHover={{ y: -4 }}
                     className="bg-card rounded-2xl overflow-hidden shadow-card hover:shadow-elegant transition-shadow border"
                   >
-                    <div className="aspect-[4/3] bg-muted overflow-hidden">
-                      {p.urlImage ? (
-                        <img
-                          src={p.urlImage}
-                          alt={p.name}
-                          loading="lazy"
-                          className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
-                        />
-                      ) : null}
-                    </div>
+                    <ProductVisual icon={p.icon} className="aspect-[4/3]" />
                     <div className="p-4">
                       <h3 className="font-bold text-lg leading-tight mb-1">{p.name}</h3>
                       <p className="text-2xl font-black text-primary mb-3">{formatBRL(p.price)}</p>
@@ -483,15 +707,11 @@ export function OrdersFlow() {
               <div className="flex-1 overflow-y-auto p-6 space-y-3">
                 {cart.map((line) => (
                   <div key={line.key} className="flex items-center gap-3">
-                    {line.product.urlImage ? (
-                      <img
-                        src={line.product.urlImage}
-                        alt=""
-                        className="w-16 h-16 rounded-xl object-cover"
-                      />
-                    ) : (
-                      <div className="w-16 h-16 rounded-xl bg-muted" />
-                    )}
+                    <ProductVisual
+                      icon={line.product.icon}
+                      className="w-16 h-16 rounded-xl shrink-0"
+                      compact
+                    />
                     <div className="flex-1">
                       <p className="font-bold">{line.product.name}</p>
                       {line.selectedVariant && (
@@ -567,6 +787,43 @@ export function OrdersFlow() {
               setVariantTarget(null);
             }}
           />
+        )}
+        {showNewCustomerConfirmation && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/60 p-5 backdrop-blur-sm"
+            onClick={() => setShowNewCustomerConfirmation(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 10 }}
+              className="w-full max-w-md rounded-3xl border bg-card p-6 shadow-elegant"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <h2 className="text-xl font-black">Atender outro cliente?</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                O pedido atual de {currentCustomer?.name} será descartado, incluindo itens e
+                observações ainda não enviados.
+              </p>
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  onClick={() => setShowNewCustomerConfirmation(false)}
+                  className="rounded-xl px-4 py-3 text-sm font-bold text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  Continuar pedido atual
+                </button>
+                <button
+                  onClick={reset}
+                  className="rounded-xl bg-gradient-primary px-4 py-3 text-sm font-bold text-primary-foreground shadow-elegant"
+                >
+                  Descartar e trocar cliente
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

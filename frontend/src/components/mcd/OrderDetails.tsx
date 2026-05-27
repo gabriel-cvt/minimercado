@@ -679,6 +679,7 @@ function EditOrderModal({
               id: item.productId,
               name: item.productName,
               price: item.unitPrice,
+              icon: "GENERAL" as const,
               stockQuantity: 0,
               hasVariants: item.selectedVariantId !== null,
               variantType: item.selectedVariantId !== null ? "Opção" : null,
