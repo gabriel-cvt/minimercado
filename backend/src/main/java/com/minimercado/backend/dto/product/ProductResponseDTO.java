@@ -1,9 +1,16 @@
 package com.minimercado.backend.dto.product;
 
-import java.util.UUID;
+import com.minimercado.backend.model.ProductIcon;
+import java.util.List;
 
 public record ProductResponseDTO(
-    UUID id,
+    Long id,
     String name,
-    Double price
+    Double price,
+    ProductIcon icon,
+    Integer stockQuantity,
+    Boolean hasVariants,
+    String variantType,
+    Boolean variantSelectionRequired,
+    List<ProductVariantResponseDTO> variants
 ) {}

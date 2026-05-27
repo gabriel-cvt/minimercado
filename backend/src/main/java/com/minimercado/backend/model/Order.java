@@ -1,6 +1,8 @@
 package com.minimercado.backend.model;
 
 import com.minimercado.backend.enums.OrderStatus;
+import com.minimercado.backend.enums.PaymentMethod;
+import com.minimercado.backend.enums.PaymentStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -9,7 +11,6 @@ import org.springframework.format.annotation.DateTimeFormat;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 
 @Entity
 @Table(name = "orders")
@@ -18,17 +19,31 @@ import java.util.UUID;
 public class Order {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
     private LocalDateTime orderTime = LocalDateTime.now();
 
+    private LocalDateTime readyAt;
+
+    private LocalDateTime finishedAt;
+
+    private LocalDateTime paidAt;
+
+    private LocalDateTime cancelledAt;
+
     @Enumerated(EnumType.STRING)
     private OrderStatus status = OrderStatus.PENDING;
 
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL)
-    private List<Product> items;
+    @Enumerated(EnumType.STRING)
+    private PaymentStatus paymentStatus = PaymentStatus.PENDING;
+
+    @Enumerated(EnumType.STRING)
+    private PaymentMethod paymentMethod;
+
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<OrderItem> items;
 
     @ManyToOne
     @JoinColumn(name = "client_id")
@@ -36,14 +51,13 @@ public class Order {
 
     private Double totalValue;
 
-    public Order(List<Product> products, Client client) {
-        this.client = client;
-    }
+    @Column(length = 500)
+    private String observation;
 
     public void calculateTotal() {
         this.totalValue = this.items
                 .stream()
-                .mapToDouble(Product::getPrice)
+                .mapToDouble(OrderItem::getSubtotal)
                 .sum();
     }
 }

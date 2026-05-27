@@ -5,7 +5,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.util.UUID;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "products")
@@ -14,28 +15,70 @@ import java.util.UUID;
 public class Product {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @Column(nullable = false)
     private String name;
 
-    private String description;
-
     @Column(nullable = false)
     private Double price;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private ProductIcon icon = ProductIcon.GENERAL;
+
+    @Column(nullable = false)
     private Integer stockQuantity;
 
-    private String category;
+    @Column(nullable = false)
+    private Boolean active = true;
 
-    @ManyToOne
-    @JoinColumn(name = "order_id")
-    private Order order;
+    @Column(nullable = false)
+    private Boolean hasVariants = false;
 
-    public Product(String name, Double price, Integer stockQuantity) {
+    private String variantType;
+
+    @Column(nullable = false)
+    private Boolean variantSelectionRequired = false;
+
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ProductVariant> variants = new ArrayList<>();
+
+    public Product(String name, Double price) {
         this.name = name;
         this.price = price;
+    }
+
+    public Product(String name, Double price, ProductIcon icon, Integer stockQuantity) {
+        this.name = name;
+        this.price = price;
+        this.icon = icon;
         this.stockQuantity = stockQuantity;
+    }
+
+    public void replaceVariants(List<ProductVariant> nextVariants) {
+        this.variants.clear();
+        this.variants.addAll(nextVariants);
+    }
+
+    public void decreaseStock(Integer quantity) {
+        if (quantity == null || quantity <= 0) {
+            throw new IllegalArgumentException("A quantidade deve ser maior que zero");
+        }
+
+        if (this.stockQuantity < quantity) {
+            throw new IllegalStateException("Estoque insuficiente para o produto " + this.name);
+        }
+
+        this.stockQuantity -= quantity;
+    }
+
+    public void increaseStock(Integer quantity) {
+        if (quantity == null || quantity <= 0) {
+            throw new IllegalArgumentException("A quantidade deve ser maior que zero");
+        }
+
+        this.stockQuantity += quantity;
     }
 }

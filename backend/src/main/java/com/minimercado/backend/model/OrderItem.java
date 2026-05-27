@@ -5,8 +5,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.util.UUID;
-
 @Entity
 @Table(name = "order_items")
 @Getter @Setter
@@ -14,8 +12,8 @@ import java.util.UUID;
 public class OrderItem {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @ManyToOne
     @JoinColumn(name = "product_id", nullable = false)
@@ -26,12 +24,27 @@ public class OrderItem {
     private Order order;
     private Integer quantity;
     private Double unitPrice;
+    @Column(nullable = false)
+    private String productName;
+    private Long selectedVariantId;
+    private String selectedVariantName;
 
     public OrderItem(Product product, Order order, Integer quantity) {
         this.product = product;
         this.order = order;
         this.quantity = quantity;
         this.unitPrice = product.getPrice();
+        this.productName = product.getName();
+    }
+
+    public OrderItem(
+            Product product,
+            Order order,
+            Integer quantity,
+            ProductVariant selectedVariant) {
+        this(product, order, quantity);
+        this.selectedVariantId = selectedVariant == null ? null : selectedVariant.getId();
+        this.selectedVariantName = selectedVariant == null ? null : selectedVariant.getName();
     }
 
     public Double getSubtotal() {
