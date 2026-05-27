@@ -130,7 +130,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const message = await response.text().catch(() => "");
-    throw new ApiError(response.status, message || `Erro ${response.status} ao acessar ${path}`);
+    throw new ApiError(response.status, message || "Não foi possível concluir a solicitação.");
   }
 
   if (response.status === 204) {
@@ -235,7 +235,7 @@ export function getKitchenPendingOrders() {
   return getOrders({
     status: "PENDING",
     page: 0,
-    size: 50,
+    size: 500,
     sort: "orderTime,asc",
   });
 }

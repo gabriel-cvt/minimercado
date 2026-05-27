@@ -226,7 +226,7 @@ export function OrderDetails() {
         <div>
           <h2 className="text-2xl md:text-3xl font-black">Detalhamento de Pedidos</h2>
           <p className="text-muted-foreground">
-            Visão operacional ao vivo - {active.length} na fila
+            {active.length} pedido(s) na fila
           </p>
         </div>
       </div>
@@ -431,7 +431,7 @@ export function OrderDetails() {
               <h3 className="text-xl font-black mb-2">Finalizar pedido #{selected.id}?</h3>
               <p className="text-muted-foreground text-sm mb-5">
                 {selected.paymentStatus === "PENDING"
-                  ? "O pedido será retirado e continuará como pagamento pendente no dashboard."
+                  ? "O pedido será retirado e continuará com pagamento pendente nos resultados."
                   : "O pedido será encerrado após a retirada."}
               </p>
               <div className="flex gap-3">

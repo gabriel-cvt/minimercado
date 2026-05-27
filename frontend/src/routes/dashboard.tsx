@@ -39,7 +39,7 @@ import { formatBRL, formatCPF, formatDateTime } from "@/lib/format";
 import { useOrdersSocket } from "@/websocket/websocket-hooks";
 
 export const Route = createFileRoute("/dashboard")({
-  head: () => ({ meta: [{ title: "Dashboard Administrativo - McDominus" }] }),
+  head: () => ({ meta: [{ title: "Painel de Resultados - McDominus" }] }),
   component: DashboardPage,
 });
 
@@ -71,6 +71,10 @@ function DashboardPage() {
     queryKey: ["orders", "dashboard"],
     queryFn: () => getOrders({ size: 500, sort: "orderTime,desc" }),
   });
+  const pendingOrdersQuery = useQuery({
+    queryKey: ["orders", "dashboard", "pending"],
+    queryFn: () => getOrders({ paymentStatus: "PENDING", size: 500, sort: "orderTime,asc" }),
+  });
   const refresh = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     void queryClient.invalidateQueries({ queryKey: ["orders", "dashboard"] });
@@ -97,7 +101,11 @@ function DashboardPage() {
   const summary = summaryQuery.data;
   const analytics = analyticsQuery.data;
   const orders = useMemo(() => ordersQuery.data?.content ?? [], [ordersQuery.data]);
-  const data = useMemo(() => computeDashboard(orders), [orders]);
+  const pendingOrders = useMemo(
+    () => pendingOrdersQuery.data?.content ?? [],
+    [pendingOrdersQuery.data],
+  );
+  const data = useMemo(() => computeDashboard(orders, pendingOrders), [orders, pendingOrders]);
   const paymentMethods = (analytics?.paymentMethods ?? []).map((metric) => ({
     name: metric.paymentMethod === "DINHEIRO" ? "Dinheiro" : metric.paymentMethod,
     value: metric.ordersCount,
@@ -127,18 +135,21 @@ function DashboardPage() {
             <p className="text-primary font-bold uppercase tracking-wider text-xs mb-1">
               Painel administrativo
             </p>
-            <h1 className="text-3xl md:text-4xl font-black">Dashboard McDominus</h1>
+            <h1 className="text-3xl md:text-4xl font-black">Resultados McDominus</h1>
             <p className="text-muted-foreground">
-              Métricas operacionais e financeiras em tempo real
+              Pedidos, pagamentos e vendas em um só lugar
             </p>
           </div>
           <div className="flex items-center gap-2 rounded-full border border-white/80 bg-white/45 px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm backdrop-blur-xl">
-            <span className="w-2 h-2 rounded-full bg-status-finished animate-pulse" /> Dados da API
+            <span className="w-2 h-2 rounded-full bg-status-finished animate-pulse" /> Atualizado
           </div>
         </div>
       </section>
 
-      {(summaryQuery.isError || analyticsQuery.isError || ordersQuery.isError) && (
+      {(summaryQuery.isError ||
+        analyticsQuery.isError ||
+        ordersQuery.isError ||
+        pendingOrdersQuery.isError) && (
         <div className="rounded-xl border border-destructive/20 bg-white/55 px-4 py-3 font-medium text-destructive shadow-card backdrop-blur-xl">
           Parte dos dados não pôde ser atualizada.
         </div>
@@ -192,8 +203,8 @@ function DashboardPage() {
 
       <div className="grid lg:grid-cols-3 gap-5">
         <Panel
-          title="Top produtos"
-          subtitle="Itens com maior saída no histórico"
+          title="Produtos mais pedidos"
+          subtitle="Itens com maior saída desde o início"
           tone="brand"
           className="lg:col-span-2"
         >
@@ -244,7 +255,7 @@ function DashboardPage() {
 
         <Panel
           title="Pedidos por hora"
-          subtitle="Picos de demanda no histórico da operação"
+          subtitle="Horários com mais pedidos desde o início"
           tone="operations"
           className="lg:col-span-2"
         >
@@ -254,14 +265,19 @@ function DashboardPage() {
               <XAxis dataKey="hour" stroke="var(--muted-foreground)" fontSize={11} />
               <YAxis stroke="var(--muted-foreground)" fontSize={11} />
               <Tooltip contentStyle={tooltipStyle} />
-              <Bar dataKey="count" fill="var(--chart-2)" radius={[6, 6, 0, 0]} />
+              <Bar
+                dataKey="count"
+                name="Pedidos"
+                fill="var(--chart-2)"
+                radius={[6, 6, 0, 0]}
+              />
             </BarChart>
           </ResponsiveContainer>
         </Panel>
 
         <Panel
-          title="Status dos pedidos carregados"
-          subtitle="Leitura atual da operação"
+          title="Situação dos pedidos"
+          subtitle="Como estão os pedidos agora"
           tone="status"
         >
           <ResponsiveContainer width="100%" height={240}>
@@ -286,8 +302,8 @@ function DashboardPage() {
       </div>
 
       <Panel
-        title="Top clientes"
-        subtitle="Clientes por pagamentos confirmados no histórico"
+        title="Clientes que mais compraram"
+        subtitle="Clientes com mais pagamentos confirmados"
         tone="finance"
       >
         <div className="overflow-x-auto">
@@ -569,7 +585,7 @@ interface PendingCustomer {
   orderIds: number[];
 }
 
-function computeDashboard(orders: ApiOrder[]) {
+function computeDashboard(orders: ApiOrder[], pendingOrders: ApiOrder[]) {
   const statuses = [
     { name: "Em preparo", value: orders.filter((order) => order.status === "PENDING").length },
     { name: "Pronto", value: orders.filter((order) => order.status === "READY_FOR_PICKUP").length },
@@ -578,7 +594,7 @@ function computeDashboard(orders: ApiOrder[]) {
   ].filter((item) => item.value > 0);
 
   const pendingMap = new Map<string, PendingCustomer>();
-  orders
+  pendingOrders
     .filter((order) => order.paymentStatus === "PENDING")
     .forEach((order) => {
       const current = pendingMap.get(order.client.cpf) ?? {

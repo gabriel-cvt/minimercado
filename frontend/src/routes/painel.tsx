@@ -11,10 +11,12 @@ export const Route = createFileRoute("/painel")({
   component: DisplayPage,
 });
 
+const DISPLAY_PAGE_SIZE = 500;
+
 async function getDisplayOrders() {
   const [preparing, ready] = await Promise.all([
-    getOrders({ status: "PENDING", size: 100, sort: "orderTime,asc" }),
-    getOrders({ status: "READY_FOR_PICKUP", size: 100, sort: "readyAt,asc" }),
+    getOrders({ status: "PENDING", size: DISPLAY_PAGE_SIZE, sort: "orderTime,asc" }),
+    getOrders({ status: "READY_FOR_PICKUP", size: DISPLAY_PAGE_SIZE, sort: "readyAt,desc" }),
   ]);
   return { preparing: preparing.content, ready: ready.content };
 }
@@ -51,7 +53,7 @@ function DisplayPage() {
             <h1 className="text-3xl md:text-4xl font-black tracking-tight">
               Painel de Pedidos McDominus
             </h1>
-            <p className="text-white/60 font-medium">Acompanhe seu pedido em tempo real</p>
+            <p className="text-white/60 font-medium">Veja quando seu pedido estiver pronto</p>
           </div>
         </div>
         <div className="text-right">

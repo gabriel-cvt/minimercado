@@ -8,7 +8,7 @@ const tabs = [
   { to: "/orders", label: "Pedidos", icon: ShoppingBag },
   { to: "/produtos", label: "Produtos", icon: Package },
   { to: "/cozinha", label: "Cozinha", icon: ChefHat },
-  { to: "/dashboard", label: "Dashboard", icon: BarChart3 },
+  { to: "/dashboard", label: "Resultados", icon: BarChart3 },
 ] as const;
 
 export function Header() {
@@ -27,7 +27,7 @@ export function Header() {
               McDominus
             </div>
             <div className="text-[11px] text-muted-foreground font-medium hidden sm:block">
-              Order Management System
+              Sistema de Pedidos
             </div>
           </div>
         </Link>

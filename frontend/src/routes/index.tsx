@@ -26,12 +26,12 @@ export const Route = createFileRoute("/")({
       { title: "McDominus — Sistema de Gerenciamento de Pedidos" },
       {
         name: "description",
-        content: "Plataforma inteligente para pedidos, cozinhas e atendimento em tempo real.",
+        content: "Sistema para registrar pedidos, acompanhar a cozinha e organizar retiradas.",
       },
       { property: "og:title", content: "McDominus — Sistema de Gerenciamento de Pedidos" },
       {
         property: "og:description",
-        content: "Plataforma inteligente para pedidos, cozinhas e atendimento em tempo real.",
+        content: "Sistema para registrar pedidos, acompanhar a cozinha e organizar retiradas.",
       },
     ],
   }),
@@ -78,7 +78,7 @@ function WelcomePage() {
               animate={{ opacity: 1, y: 0 }}
               className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/15 backdrop-blur text-sm font-semibold mb-6"
             >
-              <Zap className="w-4 h-4 text-accent-yellow" /> Tempo real · Inteligente · Profissional
+              <Zap className="w-4 h-4 text-accent-yellow" /> Pedidos · Cozinha · Retirada
             </motion.div>
             <motion.h1
               initial={{ opacity: 0, y: 20 }}
@@ -96,7 +96,7 @@ function WelcomePage() {
               transition={{ delay: 0.2 }}
               className="text-lg md:text-xl text-white/90 mb-8 font-medium max-w-xl"
             >
-              Sistema inteligente de gerenciamento de pedidos, cozinhas e atendimento em tempo real.
+              Registre pedidos, acompanhe a cozinha e organize a retirada em um só lugar.
             </motion.p>
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -108,7 +108,7 @@ function WelcomePage() {
                 to="/orders"
                 className="bg-white text-primary font-bold px-6 py-4 rounded-xl shadow-elegant hover:scale-[1.03] transition-transform flex items-center gap-2"
               >
-                <ShoppingBag className="w-5 h-5" /> Acessar Sistema{" "}
+                <ShoppingBag className="w-5 h-5" /> Fazer pedido{" "}
                 <ArrowRight className="w-4 h-4" />
               </Link>
               <Link
@@ -176,7 +176,7 @@ function WelcomePage() {
                   <p className="text-sm font-bold text-foreground">
                     {latestReady ? `Pedido #${latestReady.id} pronto!` : "Nenhum pedido pronto"}
                   </p>
-                  <p className="text-xs text-muted-foreground">Atualização em tempo real</p>
+                  <p className="text-xs text-muted-foreground">Disponível para retirada</p>
                 </div>
               </div>
             </FloatingCard>
@@ -226,32 +226,32 @@ function WelcomePage() {
           <FeatureCard
             Icon={ShoppingBag}
             title="Gestão de Pedidos"
-            desc="Realize pedidos rapidamente com identificação por CPF e cardápio dinâmico."
+            desc="Registre pedidos rapidamente com identificação por CPF e cardápio disponível."
           />
           <FeatureCard
             Icon={Zap}
-            title="Atualizações em Tempo Real"
-            desc="Mudanças refletem instantaneamente em todas as telas operacionais."
+            title="Informações Atualizadas"
+            desc="Pedidos novos e prontos aparecem para a equipe acompanhar."
           />
           <FeatureCard
             Icon={ChefHat}
             title="Controle da Cozinha"
-            desc="Todos os pedidos aparecem diretamente na fila operacional."
+            desc="Os pedidos chegam à fila de preparo da cozinha."
           />
           <FeatureCard
             Icon={BarChart3}
-            title="Dashboard Administrativo"
-            desc="KPIs, gráficos e indicadores financeiros em um só lugar."
+            title="Painel de Resultados"
+            desc="Veja quantidades, vendas e pagamentos de forma organizada."
           />
           <FeatureCard
             Icon={MonitorPlay}
-            title="Painel Inteligente"
-            desc="Display público com pedidos em preparo e prontos para retirada."
+            title="Painel de Retirada"
+            desc="Tela pública com pedidos em preparo e prontos para retirada."
           />
           <FeatureCard
             Icon={TrendingUp}
-            title="Análises Operacionais"
-            desc="Acompanhe volume de preparo, ticket médio e faturamento."
+            title="Resumo das Vendas"
+            desc="Acompanhe pedidos, produtos mais vendidos e faturamento."
           />
         </div>
       </section>
@@ -263,13 +263,13 @@ function WelcomePage() {
           <div className="relative">
             <h3 className="text-3xl md:text-5xl font-black mb-4">Pronto para começar?</h3>
             <p className="text-lg text-white/90 mb-6 max-w-xl mx-auto">
-              Acesse o sistema operacional e comece a gerenciar pedidos agora mesmo.
+              Comece a registrar e acompanhar pedidos agora mesmo.
             </p>
             <Link
               to="/orders"
               className="inline-flex items-center gap-2 bg-white text-primary font-bold px-8 py-4 rounded-xl shadow-elegant hover:scale-[1.03] transition-transform"
             >
-              <ShoppingBag className="w-5 h-5" /> Acessar Sistema
+              <ShoppingBag className="w-5 h-5" /> Fazer pedido
             </Link>
           </div>
         </div>

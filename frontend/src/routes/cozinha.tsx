@@ -93,7 +93,11 @@ const connectionConfig: Record<
     Icon: Loader2,
     className: "bg-status-preparing/15 text-status-assembly",
   },
-  disconnected: { label: "Offline", Icon: WifiOff, className: "bg-muted text-muted-foreground" },
+  disconnected: {
+    label: "Sem conexão",
+    Icon: WifiOff,
+    className: "bg-muted text-muted-foreground",
+  },
   error: { label: "Erro", Icon: AlertTriangle, className: "bg-destructive/15 text-destructive" },
 };
 
@@ -102,24 +106,34 @@ function KitchenPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
-  const [lastEvent, setLastEvent] = useState<string>("Aguardando eventos");
+  const [lastEvent, setLastEvent] = useState<string>("Aguardando pedidos");
   const [highlightedOrder, setHighlightedOrder] = useState<HighlightedOrder | null>(null);
   const highlightTimer = useRef<number | null>(null);
   const [, setTick] = useState(0);
   const { status } = useWebSocketStatus();
 
+  const refreshOrders = useCallback(async () => {
+    const page = await getKitchenPendingOrders();
+    setOrders(sortOrders(page.content.map(mapApiOrder)));
+  }, []);
+
   const loadOrders = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const page = await getKitchenPendingOrders();
-      setOrders(sortOrders(page.content.map(mapApiOrder)));
+      await refreshOrders();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível carregar a fila da cozinha.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refreshOrders]);
+
+  const refillQueue = useCallback(() => {
+    void refreshOrders().catch(() => {
+      // Preserve realtime updates if an auxiliary refill request fails.
+    });
+  }, [refreshOrders]);
 
   useEffect(() => {
     void loadOrders();
@@ -170,12 +184,13 @@ function KitchenPage() {
       setLastEvent(`Pedido #${event.orderId}: ${eventLabel(event.type)}`);
       if (event.type === "CANCELLED") {
         removeOrder(event.orderId);
+        refillQueue();
         return;
       }
       highlight(event.orderId, event.type === "CREATED" ? "Novo" : "Atualizado");
       void fetchAndUpsert(event.orderId, event);
     },
-    [fetchAndUpsert, highlight, removeOrder],
+    [fetchAndUpsert, highlight, refillQueue, removeOrder],
   );
 
   const handleOrderEvent = useCallback(
@@ -202,8 +217,9 @@ function KitchenPage() {
     (event: { orderId: number }) => {
       setLastEvent(`Pedido #${event.orderId}: pronto para retirada`);
       removeOrder(event.orderId);
+      refillQueue();
     },
-    [removeOrder],
+    [refillQueue, removeOrder],
   );
 
   useKitchenOrdersSocket(handleKitchenEvent);
@@ -229,8 +245,9 @@ function KitchenPage() {
       suppressNextRealtimeToast(order.id, "pickup");
       await markOrderReady(order.id);
       removeOrder(order.id);
+      refillQueue();
       toast.success(`Pedido #${order.id} pronto para retirada`, {
-        description: "A retirada receberá a atualização em tempo real.",
+        description: "O pedido já aparece no painel de retirada.",
         duration: 2_800,
       });
     } catch (err) {
@@ -273,7 +290,7 @@ function KitchenPage() {
                 </div>
                 <h1 className="text-3xl md:text-5xl font-black leading-tight">Fila da Cozinha</h1>
                 <p className="text-muted-foreground font-medium mt-1">
-                  Todos os pedidos, sincronizados pelo WebSocket operacional.
+                  Prepare os pedidos na ordem em que chegam.
                 </p>
               </div>
             </div>

@@ -79,19 +79,23 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "McDominus — Sistema de Gerenciamento de Pedidos" },
       {
         name: "description",
-        content: "Plataforma moderna de autoatendimento e operação de cozinhas.",
+        content: "Sistema para registrar pedidos, acompanhar a cozinha e organizar retiradas.",
       },
-      { name: "author", content: "Lovable" },
+      { name: "author", content: "McDominus" },
       { property: "og:title", content: "McDominus — Sistema de Gerenciamento de Pedidos" },
       {
         property: "og:description",
-        content: "Plataforma moderna de autoatendimento e operação de cozinhas.",
+        content: "Sistema para registrar pedidos, acompanhar a cozinha e organizar retiradas.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
     ],
     links: [
+      {
+        rel: "icon",
+        type: "image/svg+xml",
+        href: "/favicon.svg?v=2",
+      },
       {
         rel: "stylesheet",
         href: appCss,

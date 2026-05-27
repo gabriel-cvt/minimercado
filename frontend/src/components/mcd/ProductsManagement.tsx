@@ -508,7 +508,7 @@ function CreateProductModal({
   return (
     <Modal
       title="Novo produto"
-      subtitle="Preencha todos os dados disponíveis na API."
+      subtitle="Preencha as informações para incluir o produto no cardápio."
       onClose={onClose}
     >
       <form onSubmit={handleSubmit(submit)} className="grid md:grid-cols-[1fr_180px] gap-5">
@@ -590,7 +590,7 @@ function EditProductModal({
   return (
     <Modal
       title={`Editar produto #${product.id}`}
-      subtitle="O estoque possui uma ação própria para registrar a movimentação."
+      subtitle="Para mudar a quantidade disponível, use a opção de estoque."
       onClose={onClose}
     >
       <form onSubmit={handleSubmit(submit)} className="grid md:grid-cols-[1fr_180px] gap-5">
@@ -749,7 +749,7 @@ function ProductConfigurationFields({
           </div>
           <p className="text-xs text-muted-foreground">
             Todas as variantes usam o preço do produto. Desmarque disponível para ocultar apenas uma
-            opção no checkout.
+            opção na montagem do pedido.
           </p>
           {configuration.variants.map((variant, index) => (
             <div key={index} className="flex flex-wrap sm:flex-nowrap gap-2 items-center">

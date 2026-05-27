@@ -417,13 +417,13 @@ export function OrdersFlow() {
           >
             <div className="px-6 py-16 md:py-20 text-center">
               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/15 backdrop-blur text-sm font-semibold mb-6">
-                <Sparkles className="w-4 h-4" /> Autoatendimento
+                <Sparkles className="w-4 h-4" /> Novo pedido
               </div>
               <h1 className="text-4xl md:text-6xl font-black mb-3 leading-[1.05]">
-                Identifique-se para começar
+                Informe o cliente para começar
               </h1>
               <p className="text-lg text-white/90 mb-8 font-medium">
-                Informe seu CPF para iniciar seu pedido
+                Digite o CPF do cliente para iniciar o pedido
               </p>
               <div className="bg-white rounded-3xl p-6 md:p-8 shadow-elegant text-left max-w-md mx-auto">
                 <label className="text-sm font-semibold text-foreground mb-2 block">
@@ -448,9 +448,6 @@ export function OrdersFlow() {
                 >
                   Continuar <ArrowRight className="w-5 h-5" />
                 </button>
-                <p className="text-xs text-muted-foreground mt-4 text-center">
-                  Teste com o CPF <span className="font-mono font-bold">123.456.789-00</span>
-                </p>
               </div>
             </div>
           </motion.section>
@@ -665,7 +662,7 @@ export function OrdersFlow() {
                 <Row label="Pedido nº" value={`#${placedOrder.id}`} />
                 <Row label="Total" value={formatBRL(placedOrder.totalValue)} />
                 <Row label="Forma de pagamento" value={paymentLabel(placedOrder.paymentMethod)} />
-                <Row label="Status do pagamento" value="Pendente" />
+                <Row label="Situação do pagamento" value="Pendente" />
                 <Row label="Tempo estimado" value="~10 min" />
               </div>
               <button
