@@ -6,6 +6,7 @@ import com.minimercado.backend.dto.product.ProductResponseDTO;
 import com.minimercado.backend.dto.product.ProductVariantInputDTO;
 import com.minimercado.backend.mapper.ProductMapper;
 import com.minimercado.backend.model.Product;
+import com.minimercado.backend.model.ProductIcon;
 import com.minimercado.backend.model.ProductVariant;
 import com.minimercado.backend.repository.ProductRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -103,7 +104,7 @@ public class ProductServiceImpl implements ProductService {
         Product product = new Product(
                 data.name(),
                 data.price(),
-                data.urlImage(),
+                data.icon() != null ? data.icon() : ProductIcon.GENERAL,
                 data.stockQuantity()
         );
         configureProduct(
@@ -125,8 +126,8 @@ public class ProductServiceImpl implements ProductService {
             product.setPrice(data.price());
         }
 
-        if (data.urlImage() != null) {
-            product.setUrlImage(data.urlImage());
+        if (data.icon() != null) {
+            product.setIcon(data.icon());
         }
 
         if (data.hasVariants() != null ||

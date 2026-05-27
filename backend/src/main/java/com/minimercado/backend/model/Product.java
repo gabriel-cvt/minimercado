@@ -24,7 +24,9 @@ public class Product {
     @Column(nullable = false)
     private Double price;
 
-    private String urlImage;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private ProductIcon icon = ProductIcon.GENERAL;
 
     @Column(nullable = false)
     private Integer stockQuantity;
@@ -48,10 +50,10 @@ public class Product {
         this.price = price;
     }
 
-    public Product(String name, Double price, String urlImage, Integer stockQuantity) {
+    public Product(String name, Double price, ProductIcon icon, Integer stockQuantity) {
         this.name = name;
         this.price = price;
-        this.urlImage = urlImage;
+        this.icon = icon;
         this.stockQuantity = stockQuantity;
     }
 

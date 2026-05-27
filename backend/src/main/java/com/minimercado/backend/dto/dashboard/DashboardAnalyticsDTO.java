@@ -3,7 +3,6 @@ package com.minimercado.backend.dto.dashboard;
 import java.util.List;
 
 public record DashboardAnalyticsDTO(
-        Integer days,
         Double averagePreparationMinutes,
         Double averageTicket,
         List<PaymentMethodMetricDTO> paymentMethods,

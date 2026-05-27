@@ -1,5 +1,6 @@
 package com.minimercado.backend.dto.product;
 
+import com.minimercado.backend.model.ProductIcon;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 
@@ -8,7 +9,7 @@ import java.util.List;
 public record ProductPostDTO(
         @NotNull String name,
         @NotNull Double price,
-        String urlImage,
+        ProductIcon icon,
         @NotNull Integer stockQuantity,
         Boolean hasVariants,
         String variantType,

@@ -57,28 +57,25 @@ public class DashboardServiceImpl implements DashboardService {
 
     @Override
     @Transactional(readOnly = true)
-    public DashboardAnalyticsDTO getAnalytics(int days) {
-        if (days < 1 || days > 3) {
-            throw new IllegalArgumentException("O periodo do dashboard deve estar entre 1 e 3 dias");
-        }
-
-        LocalDateTime from = LocalDate.now().minusDays(days - 1L).atStartOfDay();
-        LocalDateTime to = LocalDate.now().atTime(LocalTime.MAX);
-        List<Order> createdOrders = orderRepository.findAllByOrderTimeBetween(from, to);
-        List<Order> paidOrders = orderRepository.findAllByPaidAtBetween(from, to);
-        List<Order> preparedOrders = orderRepository.findAllByReadyAtBetween(from, to);
-        List<Order> validCreatedOrders = createdOrders.stream()
+    public DashboardAnalyticsDTO getAnalytics() {
+        List<Order> orders = orderRepository.findAll();
+        List<Order> paidOrders = orders.stream()
+                .filter(order -> order.getPaidAt() != null)
+                .toList();
+        List<Order> preparedOrders = orders.stream()
+                .filter(order -> order.getReadyAt() != null)
+                .toList();
+        List<Order> validOrders = orders.stream()
                 .filter(order -> order.getStatus() != OrderStatus.CANCELLED)
                 .toList();
 
         return new DashboardAnalyticsDTO(
-                days,
                 averagePreparationMinutes(preparedOrders),
                 averageTicket(paidOrders),
                 paymentMethods(paidOrders),
-                ordersByHour(validCreatedOrders),
+                ordersByHour(validOrders),
                 topClients(paidOrders),
-                topProducts(validCreatedOrders)
+                topProducts(validOrders)
         );
     }
 

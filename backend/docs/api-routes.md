@@ -219,7 +219,7 @@ Resposta `200 OK`:
       "id": 1,
       "name": "Café",
       "price": 4.5,
-      "urlImage": "https://example.com/cafe.png",
+      "icon": "DRINK",
       "stockQuantity": 30,
       "hasVariants": false,
       "variantType": null,
@@ -251,7 +251,7 @@ Resposta `200 OK`:
   "id": 1,
   "name": "Tapioca",
   "price": 10.0,
-  "urlImage": "https://example.com/tapioca.png",
+  "icon": "SNACK",
   "stockQuantity": 30,
   "hasVariants": true,
   "variantType": "Recheio",
@@ -273,7 +273,7 @@ Body:
 {
   "name": "Tapioca",
   "price": 10.0,
-  "urlImage": "https://example.com/tapioca.png",
+  "icon": "SNACK",
   "stockQuantity": 20,
   "hasVariants": true,
   "variantType": "Recheio",
@@ -294,6 +294,9 @@ Campos obrigatórios:
 Observações:
 
 - `stockQuantity` não pode ser negativo.
+- `icon` é opcional e assume `GENERAL` quando omitido. Valores disponíveis: `GENERAL`, `SANDWICH`, `DRINK`, `DESSERT`, `SNACK`, `COMBO`, `MEAL`, `BAKERY`, `FROZEN_DESSERT` e `HOT_DRINK`.
+- Os ícones são renderizados localmente no frontend; produtos não aceitam mais URL de imagem.
+- Sugestões para o cardápio: `SANDWICH` para hambúrguer/misto quente; `SNACK` para tapioca/cuscuz/salgado; `MEAL` para espetinho/jantinha; `BAKERY` para pão, bolo e torta; `FROZEN_DESSERT` para açaí/dindin; `HOT_DRINK` para café/chocolate quente; `DRINK` para águas, refrigerantes e sucos; `COMBO` para combo.
 - Todo produto pertence ao fluxo de preparo da cozinha por definição de domínio.
 - `variants[].available = false` impede a seleção da opção em novos pedidos.
 - As variantes não possuem preço próprio; o preço utilizado é sempre o do produto base.
@@ -306,7 +309,7 @@ Resposta `201 Created`:
   "id": 2,
   "name": "Tapioca",
   "price": 10.0,
-  "urlImage": "https://example.com/tapioca.png",
+  "icon": "SNACK",
   "stockQuantity": 20,
   "hasVariants": true,
   "variantType": "Recheio",
@@ -334,7 +337,7 @@ Body:
 {
   "name": "Sanduíche especial",
   "price": 15.9,
-  "urlImage": "https://example.com/sanduiche-especial.png",
+  "icon": "SANDWICH",
   "hasVariants": true,
   "variantType": "Recheio",
   "variantSelectionRequired": true,
@@ -359,7 +362,7 @@ Resposta `200 OK`:
   "id": 2,
   "name": "Sanduíche especial",
   "price": 15.9,
-  "urlImage": "https://example.com/sanduiche-especial.png",
+  "icon": "SANDWICH",
   "stockQuantity": 20
 }
 ```
@@ -400,7 +403,7 @@ Resposta `200 OK`:
   "id": 2,
   "name": "Sanduíche especial",
   "price": 15.9,
-  "urlImage": "https://example.com/sanduiche-especial.png",
+  "icon": "SANDWICH",
   "stockQuantity": 25
 }
 ```
@@ -790,21 +793,14 @@ Campos:
 
 ### `GET /api/dashboard/analytics`
 
-Retorna métricas gerenciais agregadas para o período curto de operação do sistema.
+Retorna métricas gerenciais agregadas para todo o histórico de operação do sistema.
 O frontend utiliza esta rota para tempo médio de preparo, distribuição de pagamentos,
 picos por hora, top clientes e top produtos. Não existe série de faturamento de 7 dias.
-
-Query params:
-
-| Parâmetro | Tipo | Descrição |
-| --- | --- | --- |
-| `days` | integer | Período móvel em dias, entre `1` e `3`. Padrão: `3`. |
 
 Resposta `200 OK`:
 
 ```json
 {
-  "days": 3,
   "averagePreparationMinutes": 8.4,
   "averageTicket": 26.5,
   "paymentMethods": [
@@ -835,9 +831,9 @@ Resposta `200 OK`:
 
 Regras das métricas:
 
-- Tempo de preparo considera pedidos que receberam `readyAt` no período.
-- Ticket médio, métodos de pagamento e top clientes consideram pagamentos confirmados no período.
-- Pedidos por hora e top produtos ignoram pedidos cancelados criados no período.
+- Tempo de preparo considera pedidos que receberam `readyAt`.
+- Ticket médio, métodos de pagamento e top clientes consideram todos os pagamentos confirmados.
+- Pedidos por hora e top produtos consideram todos os pedidos, ignorando os cancelados.
 
 ## Resumo de rotas
 
@@ -861,4 +857,4 @@ Regras das métricas:
 | `PATCH` | `/api/orders/{id}/finish` | Finaliza pedido. | Sim - detalhamento. |
 | `PATCH` | `/api/orders/{id}/cancel` | Cancela pedido. | Sim - menu de ações no detalhamento. |
 | `GET` | `/api/dashboard/summary` | Retorna resumo operacional do dia. | Sim - home e dashboard. |
-| `GET` | `/api/dashboard/analytics` | Retorna métricas gerenciais de ate 3 dias. | Sim - dashboard. |
+| `GET` | `/api/dashboard/analytics` | Retorna métricas gerenciais do histórico. | Sim - dashboard. |

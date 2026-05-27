@@ -111,6 +111,8 @@ class ProductVariantIntegrationTests {
 
         mockMvc.perform(get("/api/products/{id}", comboId))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.icon").value("GENERAL"))
+                .andExpect(jsonPath("$.urlImage").doesNotExist())
                 .andExpect(jsonPath("$.hasVariants").value(false))
                 .andExpect(jsonPath("$.variants.length()").value(0))
                 .andExpect(jsonPath("$.productType").doesNotExist())
@@ -125,6 +127,35 @@ class ProductVariantIntegrationTests {
         mockMvc.perform(get("/api/products/{id}", comboId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.stockQuantity").value(2));
+    }
+
+    @Test
+    void productUsesLocalIconKeyInsteadOfRemoteImageUrl() throws Exception {
+        JsonNode product = createProduct("""
+                {
+                  "name": "Suco",
+                  "price": 7.00,
+                  "icon": "DRINK",
+                  "stockQuantity": 4
+                }
+                """);
+        long productId = product.get("id").asLong();
+
+        mockMvc.perform(get("/api/products/{id}", productId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.icon").value("DRINK"))
+                .andExpect(jsonPath("$.urlImage").doesNotExist());
+
+        mockMvc.perform(put("/api/products/{id}", productId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "icon": "HOT_DRINK"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.icon").value("HOT_DRINK"))
+                .andExpect(jsonPath("$.urlImage").doesNotExist());
     }
 
     private void createClient(String cpf) throws Exception {

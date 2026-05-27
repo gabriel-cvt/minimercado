@@ -9,8 +9,9 @@ O contrato detalhado das rotas está em `api-routes.md` e `websocket-routes.md`.
 - Todo produto segue o fluxo da cozinha. Não existe `requiresKitchenPreparation`, categoria ou praça de preparo.
 - Combos são cadastrados como produtos comuns, sem componentes, vínculo ou comportamento próprio.
 - Produtos como tapioca e salgado podem ter variantes com preço único e disponibilidade individual.
+- Produtos utilizam um ícone local selecionável (`GENERAL`, `SANDWICH`, `DRINK`, `DESSERT`, `SNACK`, `COMBO`, `MEAL`, `BAKERY`, `FROZEN_DESSERT` ou `HOT_DRINK`) em vez de URL de imagem, cobrindo os grupos do cardápio da EJC.
 - O pedido possui observação opcional, exibida no detalhamento e na cozinha.
-- O período máximo das métricas gerenciais é de três dias, correspondente ao uso previsto do sistema.
+- Métricas gerenciais de rankings e picos consideram todo o histórico disponível.
 
 ## Funcionalidades integradas
 
@@ -23,7 +24,7 @@ O contrato detalhado das rotas está em `api-routes.md` e `websocket-routes.md`.
 | Cozinha | `GET /api/orders?status=PENDING`, `PATCH /api/orders/{id}/ready`, `/topic/kitchen/orders`, `/topic/orders`, `/topic/pickup/orders` | Integrado; exibe variante e observação. |
 | Painel público | `GET /api/orders` filtrado, `/topic/orders/public`, `readyAt` | Integrado; chamados prontos são exibidos por 5 minutos. |
 | Home e dashboard básico | `GET /api/dashboard/summary`, `GET /api/orders`, `/topic/orders` | Integrado. |
-| Analytics e pendências do dashboard | `GET /api/dashboard/analytics?days=3`, `GET /api/orders`, `PATCH /api/orders/{id}/pay` | Integrado; inclui tempo médio, rankings e confirmação agrupada de pendências, inclusive pedidos já retirados. |
+| Analytics e pendências do dashboard | `GET /api/dashboard/analytics`, `GET /api/orders`, `PATCH /api/orders/{id}/pay` | Integrado; inclui tempo médio, rankings históricos e confirmação agrupada de pendências, inclusive pedidos já retirados. |
 
 ## Suporte backend implementado para painel e dashboard
 
@@ -36,7 +37,7 @@ O contrato detalhado das rotas está em `api-routes.md` e `websocket-routes.md`.
 | `paidAt` | Primeira confirmação de pagamento. | Faturamento diário e rankings pagos. |
 | `cancelledAt` | Transição para `CANCELLED`. | Contagem correta de cancelados hoje. |
 
-O dashboard não usa série financeira de sete dias. Para o período operacional curto,
+O dashboard não usa série financeira de sete dias. Para o histórico operacional,
 as métricas prioritárias são:
 
 - tempo médio de preparo;

@@ -6,5 +6,5 @@ import com.minimercado.backend.dto.dashboard.DashboardAnalyticsDTO;
 public interface DashboardService {
     DashboardSummaryDTO getSummary();
 
-    DashboardAnalyticsDTO getAnalytics(int days);
+    DashboardAnalyticsDTO getAnalytics();
 }
