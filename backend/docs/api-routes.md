@@ -32,7 +32,7 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TR
 - Variantes pertencem ao produto base, usam o mesmo preço dele e têm disponibilidade individual.
 - Em produtos como tapioca ou salgado, `variantSelectionRequired = true` obriga a escolha do sabor/tipo no pedido.
 - Um combo não possui modelagem especial: é cadastrado como um produto comum com seu próprio nome e preço.
-- O pedido guarda a variante escolhida e uma observação opcional, preservando o que a cozinha recebeu no momento da compra.
+- O pedido guarda o nome do produto, a variante escolhida e uma observação opcional, preservando o que a cozinha recebeu no momento da compra mesmo se o catálogo for renomeado depois.
 
 Em bancos existentes, aplique a evolução de schema antes de implantar com perfil `prod`:
 
@@ -49,8 +49,17 @@ CREATE TABLE IF NOT EXISTS product_variants (
 );
 
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS observation VARCHAR(500);
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_name VARCHAR(255);
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS selected_variant_id BIGINT;
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS selected_variant_name VARCHAR(255);
+
+UPDATE order_items oi
+SET product_name = products.name
+FROM products
+WHERE oi.product_id = products.id
+  AND oi.product_name IS NULL;
+
+ALTER TABLE order_items ALTER COLUMN product_name SET NOT NULL;
 
 -- Limpeza caso a modelagem especial de combo tenha sido aplicada em homologacao:
 DROP TABLE IF EXISTS combo_components;

@@ -24,13 +24,13 @@ import com.minimercado.backend.repository.ProductRepository;
 import com.minimercado.backend.service.client.ClientService;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.criteria.Predicate;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -51,11 +51,13 @@ public class OrderServiceImpl implements OrderService{
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
+    @Transactional(readOnly = true)
     public OrderResponseDTO get(Long id){
         return mapper.toResponse(findOrderById(id));
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Page<OrderResponseDTO> list(
             OrderStatus status,
             PaymentStatus paymentStatus,
@@ -71,6 +73,7 @@ public class OrderServiceImpl implements OrderService{
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Page<OrderResponseDTO> getFromClient(String clientCpf, Pageable pageable) {
         return orderRepository
                 .findByClientCpf(clientCpf, pageable)
@@ -419,7 +422,7 @@ public class OrderServiceImpl implements OrderService{
         return order.getItems().stream()
                 .map(item -> new OrderKitchenItemDTO(
                         item.getProduct().getId(),
-                        item.getProduct().getName(),
+                        item.getProductName(),
                         item.getQuantity(),
                         item.getSelectedVariantName()
                 ))

@@ -24,6 +24,8 @@ public class OrderItem {
     private Order order;
     private Integer quantity;
     private Double unitPrice;
+    @Column(nullable = false)
+    private String productName;
     private Long selectedVariantId;
     private String selectedVariantName;
 
@@ -32,6 +34,7 @@ public class OrderItem {
         this.order = order;
         this.quantity = quantity;
         this.unitPrice = product.getPrice();
+        this.productName = product.getName();
     }
 
     public OrderItem(

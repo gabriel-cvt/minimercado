@@ -75,6 +75,16 @@ class ProductDeletionIntegrationTests {
                 .getContentAsString());
         long orderId = order.get("id").asLong();
 
+        mockMvc.perform(put("/api/products/{id}", productId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "Produto renomeado"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Produto renomeado"));
+
         mockMvc.perform(delete("/api/products/{id}", productId))
                 .andExpect(status().isNoContent());
 
