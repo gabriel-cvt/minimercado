@@ -52,6 +52,7 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS observation VARCHAR(500);
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS product_name VARCHAR(255);
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS selected_variant_id BIGINT;
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS selected_variant_name VARCHAR(255);
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS team VARCHAR(255);
 
 UPDATE order_items oi
 SET product_name = products.name
@@ -156,7 +157,8 @@ Body:
 {
   "name": "Maria Silva",
   "cpf": "12345678900",
-  "phoneNumber": "85999999999"
+  "phoneNumber": "85999999999",
+  "team": "Minimercado"
 }
 ```
 
@@ -164,6 +166,7 @@ Campos obrigatórios:
 
 - `name`
 - `cpf`
+- `team`
 
 Resposta `201 Created`:
 
@@ -172,7 +175,8 @@ Resposta `201 Created`:
   "id": 1,
   "name": "Maria Silva",
   "cpf": "12345678900",
-  "phoneNumber": "85999999999"
+  "phoneNumber": "85999999999",
+  "team": "Minimercado"
 }
 ```
 
@@ -193,7 +197,8 @@ Resposta `200 OK`:
   "id": 1,
   "name": "Maria Silva",
   "cpf": "12345678900",
-  "phoneNumber": "85999999999"
+  "phoneNumber": "85999999999",
+  "team": "Minimercado"
 }
 ```
 
@@ -493,7 +498,8 @@ Resposta `200 OK`:
         "id": 1,
         "name": "Maria Silva",
         "cpf": "12345678900",
-        "phoneNumber": "85999999999"
+        "phoneNumber": "85999999999",
+        "team": "Minimercado"
       },
       "paymentMethod": "PIX",
       "totalValue": 20.0,
@@ -544,7 +550,8 @@ Resposta `200 OK`:
     "id": 1,
     "name": "Maria Silva",
     "cpf": "12345678900",
-    "phoneNumber": "85999999999"
+    "phoneNumber": "85999999999",
+    "team": "Minimercado"
   },
   "paymentMethod": "PIX",
   "totalValue": 10.0,

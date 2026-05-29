@@ -26,6 +26,8 @@ public class Client {
 
     private String phoneNumber;
 
+    private String team;
+
     // Relacionamento 1:N com pedidos (Orders)
     @OneToMany(mappedBy = "client", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Order> orders = new ArrayList<>();

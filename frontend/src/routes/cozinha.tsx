@@ -43,7 +43,7 @@ import {
 } from "@/websocket/websocket-events";
 
 export const Route = createFileRoute("/cozinha")({
-  head: () => ({ meta: [{ title: "Cozinha — McDominus" }] }),
+  head: () => ({ meta: [{ title: "Cozinha — McDomine's" }] }),
   component: KitchenPage,
 });
 

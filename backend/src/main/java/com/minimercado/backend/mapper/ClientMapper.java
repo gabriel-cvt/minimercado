@@ -17,7 +17,8 @@ public class ClientMapper {
                 client.getId(),
                 client.getName(),
                 client.getCpf(),
-                client.getPhoneNumber()
+                client.getPhoneNumber(),
+                client.getTeam()
         );
     }
 
@@ -30,6 +31,7 @@ public class ClientMapper {
         client.setName(dto.name());
         client.setCpf(dto.cpf());
         client.setPhoneNumber(dto.phoneNumber());
+        client.setTeam(dto.team().trim());
         return client;
     }
 }

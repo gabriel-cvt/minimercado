@@ -49,6 +49,7 @@ type StoredOrderDraft = {
   cpf: string;
   name: string;
   phoneNumber: string;
+  team: string;
   search: string;
   payment: ApiPaymentMethod | null;
   observation: string;
@@ -57,6 +58,28 @@ type StoredOrderDraft = {
 };
 
 const ORDER_DRAFT_STORAGE_KEY = "mcdominus.orders.active-draft.v1";
+const TEAM_OPTIONS = [
+  "Palestrantes",
+  "Círculos",
+  "Padre",
+  "J5",
+  "Coordenação geral",
+  "Apresentadores",
+  "Boa vontade",
+  "Recepção aos palestrantes",
+  "Bandinha",
+  "Externa",
+  "Lanchinho",
+  "Minimercado",
+  "Som e iluminação",
+  "Trânsito",
+  "Compras",
+  "Correio",
+  "Cozinha",
+  "Liturgia",
+  "Ordem e limpeza",
+  "Secretaria",
+] as const;
 
 function readOrderDraft(): StoredOrderDraft | null {
   if (typeof window === "undefined") return null;
@@ -84,6 +107,7 @@ function readOrderDraft(): StoredOrderDraft | null {
       cpf: typeof draft.cpf === "string" ? draft.cpf : "",
       name: typeof draft.name === "string" ? draft.name : "",
       phoneNumber: typeof draft.phoneNumber === "string" ? draft.phoneNumber : "",
+      team: typeof draft.team === "string" ? draft.team : "",
       search: typeof draft.search === "string" ? draft.search : "",
       payment: draft.payment === "PIX" || draft.payment === "DINHEIRO" ? draft.payment : null,
       observation: typeof draft.observation === "string" ? draft.observation : "",
@@ -140,6 +164,7 @@ export function OrdersFlow() {
   const [cpf, setCpf] = useState("");
   const [name, setName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [team, setTeam] = useState("");
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [showSummary, setShowSummary] = useState(false);
@@ -168,6 +193,7 @@ export function OrdersFlow() {
       setCpf(draft.cpf);
       setName(draft.name);
       setPhoneNumber(draft.phoneNumber);
+      setTeam(draft.team);
       setSearch(draft.search);
       setPayment(draft.payment);
       setObservation(draft.observation);
@@ -218,6 +244,7 @@ export function OrdersFlow() {
       !cpf &&
       !name &&
       !phoneNumber &&
+      !team &&
       !search &&
       !payment &&
       !observation &&
@@ -234,6 +261,7 @@ export function OrdersFlow() {
       cpf,
       name,
       phoneNumber,
+      team,
       search,
       payment,
       observation,
@@ -256,6 +284,7 @@ export function OrdersFlow() {
     observation,
     payment,
     phoneNumber,
+    team,
     search,
     step,
   ]);
@@ -329,12 +358,17 @@ export function OrdersFlow() {
       setError("O nome deve ter ao menos 3 caracteres.");
       return;
     }
+    if (!team) {
+      setError("Selecione a equipe do cliente.");
+      return;
+    }
     setSubmitting(true);
     try {
       const customer = await createClient({
         cpf,
         name: name.trim(),
         phoneNumber: phoneNumber.replace(/\D/g, "") || undefined,
+        team,
       });
       setCurrentCustomer(customer);
       setStep("products");
@@ -382,6 +416,7 @@ export function OrdersFlow() {
     setCpf("");
     setName("");
     setPhoneNumber("");
+    setTeam("");
     setError("");
     setSearch("");
     setShowSummary(false);
@@ -490,6 +525,21 @@ export function OrdersFlow() {
                   className="w-full px-4 py-4 rounded-xl border-2 border-input text-foreground text-lg focus:border-primary focus:outline-none"
                   onKeyDown={(e) => e.key === "Enter" && void handleRegister()}
                 />
+                <label className="text-sm font-semibold text-foreground mb-2 mt-4 block">
+                  Equipe
+                </label>
+                <select
+                  value={team}
+                  onChange={(event) => setTeam(event.target.value)}
+                  className="w-full px-4 py-4 rounded-xl border-2 border-input bg-white text-foreground text-lg focus:border-primary focus:outline-none"
+                >
+                  <option value="">Selecione a equipe</option>
+                  {TEAM_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
                 {error && <p className="text-destructive text-sm mt-2 font-medium">{error}</p>}
                 <button
                   onClick={() => void handleRegister()}

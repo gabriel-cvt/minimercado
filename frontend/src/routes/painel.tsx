@@ -7,7 +7,7 @@ import { getOrders, type ApiOrder } from "@/lib/api";
 import { usePublicOrdersSocket } from "@/websocket/websocket-hooks";
 
 export const Route = createFileRoute("/painel")({
-  head: () => ({ meta: [{ title: "Painel de Pedidos - McDominus" }] }),
+  head: () => ({ meta: [{ title: "Painel de Pedidos - McDomine's" }] }),
   component: DisplayPage,
 });
 
@@ -51,7 +51,7 @@ function DisplayPage() {
           </div>
           <div>
             <h1 className="text-3xl md:text-4xl font-black tracking-tight">
-              Painel de Pedidos McDominus
+              Painel de Pedidos McDomine's
             </h1>
             <p className="text-white/60 font-medium">Veja quando seu pedido estiver pronto</p>
           </div>

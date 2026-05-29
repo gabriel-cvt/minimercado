@@ -17,7 +17,7 @@ O contrato detalhado das rotas está em `api-routes.md` e `websocket-routes.md`.
 
 | Parte do frontend | Backend utilizado | Situação |
 | --- | --- | --- |
-| Identificação e cadastro rápido do cliente, incluindo telefone | `GET /api/clients/cpf/{cpf}`, `POST /api/clients` | Integrado. |
+| Identificação e cadastro rápido do cliente, incluindo telefone e equipe | `GET /api/clients/cpf/{cpf}`, `POST /api/clients` | Integrado. |
 | Gestão de produtos | `GET /api/products`, `GET /api/products/{id}`, `POST /api/products`, `PUT /api/products/{id}`, `PATCH /api/products/{id}/stock`, `DELETE /api/products/{id}` | Integrado; cadastra produtos comuns, incluindo combos, e configura variantes quando aplicável. |
 | Checkout | `POST /api/orders` | Integrado; seleciona variantes de produtos variáveis, registra observação, PIX ou dinheiro, mantendo pagamento pendente até confirmação. |
 | Detalhamento operacional | `GET /api/orders`, `GET /api/orders/{id}`, `PUT /api/orders/{id}`, `PATCH /api/orders/{id}/pay`, `PATCH /api/orders/{id}/finish`, `PATCH /api/orders/{id}/cancel`, `/topic/orders` | Integrado; exibe e edita observação e variantes por linha, inclusive sabores diferentes do mesmo produto. Edição de pedido pronto o devolve à cozinha. |

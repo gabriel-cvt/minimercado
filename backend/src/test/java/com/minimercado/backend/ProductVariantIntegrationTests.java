@@ -165,7 +165,8 @@ class ProductVariantIntegrationTests {
                                 {
                                   "name": "Cliente Variacao",
                                   "cpf": "%s",
-                                  "phoneNumber": "85999999999"
+                                  "phoneNumber": "85999999999",
+                                  "team": "Minimercado"
                                 }
                                 """.formatted(cpf)))
                 .andExpect(status().isCreated());
