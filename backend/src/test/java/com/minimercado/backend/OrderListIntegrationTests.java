@@ -54,7 +54,8 @@ class OrderListIntegrationTests {
                                 {
                                   "name": "Cliente Painel",
                                   "cpf": "%s",
-                                  "phoneNumber": "85999999999"
+                                  "phoneNumber": "85999999999",
+                                  "team": "Minimercado"
                                 }
                                 """.formatted(cpf)))
                 .andExpect(status().isCreated());

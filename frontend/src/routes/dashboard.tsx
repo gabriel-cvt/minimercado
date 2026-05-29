@@ -39,7 +39,7 @@ import { formatBRL, formatCPF, formatDateTime } from "@/lib/format";
 import { useOrdersSocket } from "@/websocket/websocket-hooks";
 
 export const Route = createFileRoute("/dashboard")({
-  head: () => ({ meta: [{ title: "Painel de Resultados - McDominus" }] }),
+  head: () => ({ meta: [{ title: "Painel de Resultados - McDomine's" }] }),
   component: DashboardPage,
 });
 
@@ -135,7 +135,7 @@ function DashboardPage() {
             <p className="text-primary font-bold uppercase tracking-wider text-xs mb-1">
               Painel administrativo
             </p>
-            <h1 className="text-3xl md:text-4xl font-black">Resultados McDominus</h1>
+            <h1 className="text-3xl md:text-4xl font-black">Resultados McDomine's</h1>
             <p className="text-muted-foreground">
               Pedidos, pagamentos e vendas em um só lugar
             </p>

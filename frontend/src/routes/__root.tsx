@@ -76,13 +76,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "McDominus — Sistema de Gerenciamento de Pedidos" },
+      { title: "McDomine's — Sistema de Gerenciamento de Pedidos" },
       {
         name: "description",
         content: "Sistema para registrar pedidos, acompanhar a cozinha e organizar retiradas.",
       },
-      { name: "author", content: "McDominus" },
-      { property: "og:title", content: "McDominus — Sistema de Gerenciamento de Pedidos" },
+      { name: "author", content: "McDomine's" },
+      { property: "og:title", content: "McDomine's — Sistema de Gerenciamento de Pedidos" },
       {
         property: "og:description",
         content: "Sistema para registrar pedidos, acompanhar a cozinha e organizar retiradas.",

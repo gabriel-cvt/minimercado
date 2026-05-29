@@ -4,6 +4,7 @@ public record ClientResponseDTO(
         Long id,
         String name,
         String cpf,
-        String phoneNumber
+        String phoneNumber,
+        String team
 ) {
 }

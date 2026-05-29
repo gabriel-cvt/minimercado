@@ -24,7 +24,7 @@ export function Header() {
           </div>
           <div className="leading-tight">
             <div className="text-lg md:text-xl font-black tracking-tight text-foreground">
-              McDominus
+              McDomine's
             </div>
             <div className="text-[11px] text-muted-foreground font-medium hidden sm:block">
               Sistema de Pedidos

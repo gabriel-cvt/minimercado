@@ -23,12 +23,12 @@ import { useOrdersSocket } from "@/websocket/websocket-hooks";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "McDominus — Sistema de Gerenciamento de Pedidos" },
+      { title: "McDomine's — Sistema de Gerenciamento de Pedidos" },
       {
         name: "description",
         content: "Sistema para registrar pedidos, acompanhar a cozinha e organizar retiradas.",
       },
-      { property: "og:title", content: "McDominus — Sistema de Gerenciamento de Pedidos" },
+      { property: "og:title", content: "McDomine's — Sistema de Gerenciamento de Pedidos" },
       {
         property: "og:description",
         content: "Sistema para registrar pedidos, acompanhar a cozinha e organizar retiradas.",
@@ -88,7 +88,7 @@ function WelcomePage() {
             >
               Bem-vindo ao
               <br />
-              <span className="text-accent-yellow">McDominus</span>
+              <span className="text-accent-yellow">McDomine's</span>
             </motion.h1>
             <motion.p
               initial={{ opacity: 0, y: 20 }}
@@ -282,12 +282,12 @@ function WelcomePage() {
               <span className="text-2xl font-black text-primary leading-none">M</span>
             </div>
             <div>
-              <p className="font-black text-background">McDominus</p>
+              <p className="font-black text-background">McDomine's</p>
               <p className="text-xs">Sistema de Gerenciamento de Pedidos</p>
             </div>
           </div>
           <p className="text-sm">
-            © {new Date().getFullYear()} McDominus. Todos os direitos reservados.
+            © {new Date().getFullYear()} McDomine's. Todos os direitos reservados.
           </p>
         </div>
       </footer>

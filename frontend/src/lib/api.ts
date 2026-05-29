@@ -26,6 +26,7 @@ export interface ApiClient {
   name: string;
   cpf: string;
   phoneNumber?: string;
+  team?: string;
 }
 
 export interface ApiProduct {
@@ -153,7 +154,7 @@ export function getClientByCpf(cpf: string) {
   return request<ApiClient>(`/api/clients/cpf/${encodeURIComponent(cpf)}`);
 }
 
-export function createClient(data: { name: string; cpf: string; phoneNumber?: string }) {
+export function createClient(data: { name: string; cpf: string; phoneNumber?: string; team: string }) {
   return request<ApiClient>("/api/clients", {
     method: "POST",
     body: JSON.stringify(data),
