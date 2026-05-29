@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -27,6 +27,7 @@ import {
   type ApiProductVariant,
 } from "@/lib/api";
 import { formatBRL, formatCPF, formatPhone, isValidCPF } from "@/lib/format";
+import { fuzzyFilterByName } from "@/lib/fuzzy-search";
 import { ProductVisual } from "@/components/mcd/ProductVisual";
 
 type Step = "cpf" | "register" | "products" | "success";
@@ -157,7 +158,7 @@ export function OrdersFlow() {
     queryKey: ["products", "available"],
     queryFn: () => getProducts({ inStock: true }),
   });
-  const products = productsQuery.data?.content ?? [];
+  const products = useMemo(() => productsQuery.data?.content ?? [], [productsQuery.data?.content]);
 
   useEffect(() => {
     const draft = readOrderDraft();
@@ -402,7 +403,7 @@ export function OrdersFlow() {
     reset();
   };
 
-  const filtered = products.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
+  const filtered = useMemo(() => fuzzyFilterByName(products, search), [products, search]);
 
   return (
     <div className="relative pb-32">
