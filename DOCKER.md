@@ -1,10 +1,11 @@
 # Execucao local com Docker
 
-O Compose executa tres servicos:
+O Compose executa quatro servicos:
 
 - `frontend`: aplicacao TanStack Start servida localmente pelo Wrangler na porta `5173`.
 - `backend`: API Spring Boot e WebSocket na porta `8080`.
 - `db`: PostgreSQL na porta `5432`, com dados preservados no volume `mcdominus_postgres_data`.
+- `pgadmin`: interface web do PostgreSQL na porta `5050`, com configuracoes preservadas no volume `mcdominus_pgadmin_data`.
 
 ## Ambiente
 
@@ -42,6 +43,27 @@ docker compose up --build -d
 ```
 
 O frontend fica disponivel em `http://IP_DA_MAQUINA:5173`.
+
+O pgAdmin fica disponivel em `http://IP_DA_MAQUINA:5050`.
+
+Login padrao:
+
+```text
+Email: admin@mcdominus.com
+Senha: admin
+```
+
+Para registrar o banco no pgAdmin, use:
+
+```text
+Host: db
+Porta: 5432
+Database: minimercado
+Usuario: minimercado
+Senha: o valor de POSTGRES_PASSWORD no backend/.env
+```
+
+Se quiser trocar o login do pgAdmin, exporte `PGADMIN_DEFAULT_EMAIL` e `PGADMIN_DEFAULT_PASSWORD` antes de subir o Compose.
 
 ## Operacao
 
