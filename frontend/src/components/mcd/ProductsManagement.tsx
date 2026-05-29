@@ -26,6 +26,7 @@ import {
   type ApiProduct,
 } from "@/lib/api";
 import { formatBRL } from "@/lib/format";
+import { fuzzyFilterByName } from "@/lib/fuzzy-search";
 import { ProductVisual } from "@/components/mcd/ProductVisual";
 import { PRODUCT_ICON_OPTIONS } from "@/components/mcd/product-icon-options";
 
@@ -89,28 +90,48 @@ export function ProductsManagement() {
   const [editTarget, setEditTarget] = useState<ApiProduct | null>(null);
   const [stockTarget, setStockTarget] = useState<ApiProduct | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ApiProduct | null>(null);
+  const hasSearch = search.trim().length > 0;
 
   const productsQuery = useQuery({
-    queryKey: ["products", "management", search, stockFilter, page],
+    queryKey: ["products", "management", search, stockFilter, hasSearch ? "all" : page],
     queryFn: () =>
       getProducts({
-        name: search || undefined,
         inStock: stockFilter === "all" ? undefined : stockFilter === "available",
-        page,
-        size: PAGE_SIZE,
+        page: hasSearch ? 0 : page,
+        size: hasSearch ? 1000 : PAGE_SIZE,
         sort: "name,asc",
       }),
   });
 
-  const products = useMemo(() => productsQuery.data?.content ?? [], [productsQuery.data?.content]);
+  const fetchedProducts = useMemo(
+    () => productsQuery.data?.content ?? [],
+    [productsQuery.data?.content],
+  );
+  const matchedProducts = useMemo(
+    () => (hasSearch ? fuzzyFilterByName(fetchedProducts, search) : fetchedProducts),
+    [fetchedProducts, hasSearch, search],
+  );
+  const products = useMemo(
+    () =>
+      hasSearch ? matchedProducts.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE) : matchedProducts,
+    [hasSearch, matchedProducts, page],
+  );
+  const totalElements = hasSearch
+    ? matchedProducts.length
+    : (productsQuery.data?.totalElements ?? 0);
+  const totalPages = hasSearch
+    ? Math.ceil(matchedProducts.length / PAGE_SIZE)
+    : (productsQuery.data?.totalPages ?? 0);
+  const isFirstPage = hasSearch ? page === 0 : productsQuery.data?.first;
+  const isLastPage = hasSearch ? page >= Math.max(0, totalPages - 1) : productsQuery.data?.last;
   const stats = useMemo(
     () => ({
-      total: productsQuery.data?.totalElements ?? 0,
+      total: totalElements,
       available: products.filter((product) => product.stockQuantity > 0).length,
       unavailable: products.filter((product) => product.stockQuantity === 0).length,
       units: products.reduce((total, product) => total + product.stockQuantity, 0),
     }),
-    [products, productsQuery.data?.totalElements],
+    [products, totalElements],
   );
 
   async function refreshProducts() {
@@ -307,16 +328,15 @@ export function ProductsManagement() {
           ))}
         </div>
       )}
-      {(productsQuery.data?.totalPages ?? 0) > 1 && (
+      {totalPages > 1 && (
         <div className="bg-card border rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground font-semibold">
-            Página {(productsQuery.data?.number ?? 0) + 1} de {productsQuery.data?.totalPages} ·{" "}
-            {productsQuery.data?.totalElements} produtos encontrados
+            Página {page + 1} de {totalPages} · {totalElements} produtos encontrados
           </p>
           <div className="flex gap-2">
             <button
               type="button"
-              disabled={productsQuery.data?.first}
+              disabled={isFirstPage}
               onClick={() => setPage((current) => Math.max(0, current - 1))}
               className="border rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-40"
             >
@@ -324,7 +344,7 @@ export function ProductsManagement() {
             </button>
             <button
               type="button"
-              disabled={productsQuery.data?.last}
+              disabled={isLastPage}
               onClick={() => setPage((current) => current + 1)}
               className="border rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-40"
             >

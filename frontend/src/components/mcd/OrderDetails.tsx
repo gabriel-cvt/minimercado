@@ -39,6 +39,7 @@ import {
   clearSuppressedRealtimeToast,
   suppressNextRealtimeToast,
 } from "@/websocket/websocket-events";
+import { fuzzyFilterByName } from "@/lib/fuzzy-search";
 
 const statusConfig: Record<
   ApiOrderStatus,
@@ -225,9 +226,7 @@ export function OrderDetails() {
         </div>
         <div>
           <h2 className="text-2xl md:text-3xl font-black">Detalhamento de Pedidos</h2>
-          <p className="text-muted-foreground">
-            {active.length} pedido(s) na fila
-          </p>
+          <p className="text-muted-foreground">{active.length} pedido(s) na fila</p>
         </div>
       </div>
 
@@ -708,9 +707,7 @@ function EditOrderModal({
     lines
       .filter((line) => line.productId === productId)
       .reduce((total, line) => total + line.quantity, 0);
-  const visibleProducts = products.filter((product) =>
-    product.name.toLowerCase().includes(search.toLowerCase()),
-  );
+  const visibleProducts = useMemo(() => fuzzyFilterByName(products, search), [products, search]);
   const requestedItems = lines
     .filter((line) => line.quantity > 0)
     .map((line) => ({
