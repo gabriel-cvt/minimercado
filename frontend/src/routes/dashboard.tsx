@@ -21,10 +21,12 @@ import {
   CheckCircle2,
   Clock,
   DollarSign,
+  FileSpreadsheet,
   Flame,
   Package,
   Search,
   ShoppingBag,
+  Wallet,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -34,8 +36,9 @@ import {
   getOrders,
   markOrderPaid,
   type ApiOrder,
+  type ApiPaymentMethod,
 } from "@/lib/api";
-import { formatBRL, formatCPF, formatDateTime } from "@/lib/format";
+import { formatBRL, formatCPF, formatDateTime, formatPhone } from "@/lib/format";
 import { useOrdersSocket } from "@/websocket/websocket-hooks";
 
 export const Route = createFileRoute("/dashboard")({
@@ -59,6 +62,7 @@ function DashboardPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [pendingTarget, setPendingTarget] = useState<PendingCustomer | null>(null);
+  const [bulkPaymentMethod, setBulkPaymentMethod] = useState<ApiPaymentMethod>("PIX");
   const summaryQuery = useQuery({
     queryKey: ["dashboard", "summary"],
     queryFn: getDashboardSummary,
@@ -81,7 +85,12 @@ function DashboardPage() {
   }, [queryClient]);
   useOrdersSocket(refresh);
   const paymentMutation = useMutation({
-    mutationFn: (orderIds: number[]) => Promise.all(orderIds.map((id) => markOrderPaid(id))),
+    mutationFn: ({ orders, fallbackPaymentMethod }: PendingPaymentConfirmation) =>
+      Promise.all(
+        orders.map((order) =>
+          markOrderPaid(order.id, order.paymentMethod ?? fallbackPaymentMethod),
+        ),
+      ),
     onSuccess: async (paidOrders) => {
       await queryClient.invalidateQueries({ queryKey: ["orders"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -119,6 +128,9 @@ function DashboardPage() {
       pending.name.toLowerCase().includes(search.toLowerCase()) ||
       pending.cpf.includes(search.replace(/\D/g, "")),
   );
+  const exportPendingCustomers = useCallback(() => {
+    exportPendingCustomersCsv(filteredPending);
+  }, [filteredPending]);
 
   return (
     <div className="relative isolate max-w-7xl mx-auto px-4 md:px-6 py-8 space-y-8">
@@ -154,6 +166,25 @@ function DashboardPage() {
           Parte dos dados não pôde ser atualizada.
         </div>
       )}
+
+      <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+        <BalanceHighlight
+          label="Saldo em conta"
+          title="Faturamento geral"
+          value={formatBRL(summary?.totalRevenue ?? 0)}
+          detail="Total recebido em pedidos pagos"
+          icon={Wallet}
+          tone="finance"
+        />
+        <BalanceHighlight
+          label="Movimento total"
+          title="Pedidos totais"
+          value={summary?.totalOrders ?? 0}
+          detail="Pedidos registrados desde o início"
+          icon={ShoppingBag}
+          tone="orders"
+        />
+      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <KPI
@@ -350,7 +381,7 @@ function DashboardPage() {
         subtitle="Cobranças que ainda precisam de confirmação"
         tone="warning"
       >
-        <div className="mb-4 flex items-center gap-3">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input
@@ -360,9 +391,18 @@ function DashboardPage() {
               className="w-full rounded-xl border border-white/80 bg-white/45 py-2.5 pl-10 pr-4 text-sm shadow-sm backdrop-blur-md focus:border-primary focus:outline-none"
             />
           </div>
-          <span className="text-xs font-bold text-muted-foreground">
-            {filteredPending.length} cliente(s)
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-bold text-muted-foreground">
+              {filteredPending.length} cliente(s)
+            </span>
+            <button
+              onClick={exportPendingCustomers}
+              disabled={filteredPending.length === 0}
+              className="inline-flex items-center gap-2 rounded-xl border border-white/80 bg-white/55 px-3 py-2 text-xs font-bold text-foreground shadow-sm backdrop-blur-md transition-colors hover:border-primary/40 hover:bg-white/75 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <FileSpreadsheet className="h-4 w-4" /> Exportar planilha
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -435,8 +475,30 @@ function DashboardPage() {
                 total de {formatBRL(pendingTarget.amount)}.
               </p>
               <p className="mb-5 rounded-xl border border-border bg-muted px-4 py-3 text-sm font-semibold">
-                A confirmação preservará a forma de pagamento informada em cada pedido.
+                {pendingTarget.hasMissingPaymentMethod
+                  ? "Escolha a forma de pagamento para os pedidos sem método informado."
+                  : "A confirmação preservará a forma de pagamento informada em cada pedido."}
               </p>
+              {pendingTarget.hasMissingPaymentMethod && (
+                <div className="mb-5 grid grid-cols-2 gap-2">
+                  {[
+                    { value: "PIX" as const, label: "PIX" },
+                    { value: "DINHEIRO" as const, label: "Dinheiro" },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => setBulkPaymentMethod(option.value)}
+                      className={`rounded-xl border-2 px-4 py-3 text-sm font-bold transition-colors ${
+                        bulkPaymentMethod === option.value
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border bg-card hover:border-primary/40"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="flex gap-3">
                 <button
                   onClick={() => setPendingTarget(null)}
@@ -445,7 +507,14 @@ function DashboardPage() {
                   Cancelar
                 </button>
                 <button
-                  onClick={() => paymentMutation.mutate(pendingTarget.orderIds)}
+                  onClick={() =>
+                    paymentMutation.mutate({
+                      orders: pendingTarget.paymentOrders,
+                      fallbackPaymentMethod: pendingTarget.hasMissingPaymentMethod
+                        ? bulkPaymentMethod
+                        : undefined,
+                    })
+                  }
                   disabled={paymentMutation.isPending}
                   className="flex-1 rounded-xl bg-primary py-3 font-bold text-primary-foreground shadow-sm transition-colors hover:bg-primary-glow disabled:opacity-50"
                 >
@@ -473,6 +542,68 @@ const tooltipStyle = {
   fontSize: "12px",
   fontWeight: 600,
 };
+
+function BalanceHighlight({
+  label,
+  title,
+  value,
+  detail,
+  icon: Icon,
+  tone,
+}: {
+  label: string;
+  title: string;
+  value: string | number;
+  detail: string;
+  icon: typeof Clock;
+  tone: "finance" | "orders";
+}) {
+  const style =
+    tone === "finance"
+      ? {
+          shell:
+            "border-status-finished/25 bg-[linear-gradient(135deg,rgba(255,255,255,0.86),rgba(229,246,236,0.72))]",
+          icon: "bg-status-finished/15 text-status-finished",
+          rail: "bg-status-finished",
+        }
+      : {
+          shell:
+            "border-primary/20 bg-[linear-gradient(135deg,rgba(255,255,255,0.86),rgba(236,242,255,0.72))]",
+          icon: "bg-primary/10 text-primary",
+          rail: "bg-primary",
+        };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`relative min-h-[168px] overflow-hidden rounded-3xl border p-6 shadow-[0_18px_48px_-25px_oklch(0.18_0.02_30_/_0.36)] backdrop-blur-2xl ${style.shell}`}
+    >
+      <div className={`absolute inset-x-0 top-0 h-1 ${style.rail}`} />
+      <div className="relative flex h-full flex-col justify-between gap-8">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              {label}
+            </p>
+            <h2 className="mt-1 text-base font-black text-foreground">{title}</h2>
+          </div>
+          <div
+            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${style.icon}`}
+          >
+            <Icon className="h-6 w-6" />
+          </div>
+        </div>
+        <div>
+          <p className="text-4xl font-black tabular-nums tracking-normal text-foreground md:text-5xl">
+            {value}
+          </p>
+          <p className="mt-2 text-sm font-semibold text-muted-foreground">{detail}</p>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
 
 function KPI({
   label,
@@ -579,10 +710,23 @@ function Panel({
 interface PendingCustomer {
   name: string;
   cpf: string;
+  team: string;
+  phoneNumber: string;
   amount: number;
   count: number;
   lastAt: string;
-  orderIds: number[];
+  paymentOrders: PendingPaymentOrder[];
+  hasMissingPaymentMethod: boolean;
+}
+
+interface PendingPaymentOrder {
+  id: number;
+  paymentMethod: ApiPaymentMethod | null;
+}
+
+interface PendingPaymentConfirmation {
+  orders: PendingPaymentOrder[];
+  fallbackPaymentMethod?: ApiPaymentMethod;
 }
 
 function computeDashboard(orders: ApiOrder[], pendingOrders: ApiOrder[]) {
@@ -600,14 +744,20 @@ function computeDashboard(orders: ApiOrder[], pendingOrders: ApiOrder[]) {
       const current = pendingMap.get(order.client.cpf) ?? {
         name: order.client.name,
         cpf: order.client.cpf,
+        team: order.client.team ?? "",
+        phoneNumber: order.client.phoneNumber ?? "",
         amount: 0,
         count: 0,
         lastAt: order.orderTime,
-        orderIds: [],
+        paymentOrders: [],
+        hasMissingPaymentMethod: false,
       };
       current.amount += order.totalValue;
       current.count += 1;
-      current.orderIds.push(order.id);
+      current.team ||= order.client.team ?? "";
+      current.phoneNumber ||= order.client.phoneNumber ?? "";
+      current.paymentOrders.push({ id: order.id, paymentMethod: order.paymentMethod });
+      if (order.paymentMethod === null) current.hasMissingPaymentMethod = true;
       if (new Date(order.orderTime) > new Date(current.lastAt)) current.lastAt = order.orderTime;
       pendingMap.set(order.client.cpf, current);
     });
@@ -618,4 +768,47 @@ function computeDashboard(orders: ApiOrder[], pendingOrders: ApiOrder[]) {
       (first, second) => second.amount - first.amount,
     ),
   };
+}
+
+function exportPendingCustomersCsv(customers: PendingCustomer[]) {
+  if (typeof window === "undefined" || customers.length === 0) return;
+
+  const rows = [
+    [
+      "Cliente",
+      "CPF",
+      "Equipe",
+      "Telefone",
+      "Valor pendente",
+      "Pedidos",
+      "Ultimo pedido",
+    ],
+    ...customers.map((customer) => [
+      customer.name,
+      formatCPF(customer.cpf),
+      customer.team || "Nao informada",
+      customer.phoneNumber ? formatPhone(customer.phoneNumber) : "Nao informado",
+      customer.amount.toLocaleString("pt-BR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+      String(customer.count),
+      formatDateTime(customer.lastAt),
+    ]),
+  ];
+  const csv = rows.map((row) => row.map(escapeCsvCell).join(";")).join("\n");
+  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+
+  link.href = url;
+  link.download = `clientes-pagamento-pendente-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function escapeCsvCell(value: string) {
+  return `"${value.replace(/"/g, '""')}"`;
 }

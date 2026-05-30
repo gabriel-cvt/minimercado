@@ -74,8 +74,10 @@ class OrderPaymentIntegrationTests {
 
         mockMvc.perform(get("/api/dashboard/summary"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalOrders").value(1))
                 .andExpect(jsonPath("$.pendingPayments").value(1))
-                .andExpect(jsonPath("$.revenueToday").value(0.0));
+                .andExpect(jsonPath("$.revenueToday").value(0.0))
+                .andExpect(jsonPath("$.totalRevenue").value(0.0));
 
         mockMvc.perform(patch("/api/orders/{id}/pay", orderId))
                 .andExpect(status().isOk())
@@ -86,8 +88,43 @@ class OrderPaymentIntegrationTests {
 
         mockMvc.perform(get("/api/dashboard/summary"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalOrders").value(1))
                 .andExpect(jsonPath("$.pendingPayments").value(0))
-                .andExpect(jsonPath("$.revenueToday").value(12.5));
+                .andExpect(jsonPath("$.revenueToday").value(12.5))
+                .andExpect(jsonPath("$.totalRevenue").value(12.5));
+    }
+
+    @Test
+    void orderCanBeCreatedWithPendingPaymentMethodToConfirmLater() throws Exception {
+        long productId = createProductAndClient("89314409750");
+
+        JsonNode order = objectMapper.readTree(mockMvc.perform(post("/api/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "items": [{ "productId": %d, "quantity": 1 }],
+                                  "clienteCpf": "89314409750"
+                                }
+                                """.formatted(productId)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.paymentStatus").value("PENDING"))
+                .andExpect(jsonPath("$.paymentMethod").doesNotExist())
+                .andExpect(jsonPath("$.paidAt").doesNotExist())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+
+        mockMvc.perform(patch("/api/orders/{id}/pay", order.get("id").asLong())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "paymentMethod": "PIX"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paymentMethod").value("PIX"))
+                .andExpect(jsonPath("$.paymentStatus").value("PAID"))
+                .andExpect(jsonPath("$.paidAt").exists());
     }
 
     private long createProductAndClient(String cpf) throws Exception {

@@ -43,11 +43,13 @@ public class DashboardServiceImpl implements DashboardService {
 
         return new DashboardSummaryDTO(
                 orderRepository.countByOrderTimeBetween(startOfDay, endOfDay),
+                orderRepository.count(),
                 orderRepository.sumTotalValueByPaymentStatusAndPaidAtBetween(
                         PaymentStatus.PAID,
                         startOfDay,
                         endOfDay
                 ),
+                orderRepository.sumTotalValueByPaymentStatus(PaymentStatus.PAID),
                 orderRepository.countByPaymentStatus(PaymentStatus.PENDING),
                 orderRepository.countByStatus(OrderStatus.PENDING),
                 orderRepository.countByStatus(OrderStatus.READY_FOR_PICKUP),

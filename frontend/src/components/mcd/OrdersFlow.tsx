@@ -20,6 +20,7 @@ import {
   createOrder,
   getClientByCpf,
   getProducts,
+  markOrderPaid,
   type ApiClient,
   type ApiOrder,
   type ApiPaymentMethod,
@@ -39,6 +40,7 @@ type CartLine = {
 };
 
 type ActiveStep = Exclude<Step, "success">;
+type PaymentChoice = ApiPaymentMethod | "PENDING";
 type StoredCartLine = {
   productId: number;
   selectedVariantId?: number;
@@ -51,7 +53,7 @@ type StoredOrderDraft = {
   phoneNumber: string;
   team: string;
   search: string;
-  payment: ApiPaymentMethod | null;
+  payment: PaymentChoice | null;
   observation: string;
   cart: StoredCartLine[];
   currentCustomer: ApiClient | null;
@@ -109,7 +111,10 @@ function readOrderDraft(): StoredOrderDraft | null {
       phoneNumber: typeof draft.phoneNumber === "string" ? draft.phoneNumber : "",
       team: typeof draft.team === "string" ? draft.team : "",
       search: typeof draft.search === "string" ? draft.search : "",
-      payment: draft.payment === "PIX" || draft.payment === "DINHEIRO" ? draft.payment : null,
+      payment:
+        draft.payment === "PIX" || draft.payment === "DINHEIRO" || draft.payment === "PENDING"
+          ? draft.payment
+          : null,
       observation: typeof draft.observation === "string" ? draft.observation : "",
       cart: Array.isArray(draft.cart)
         ? draft.cart.flatMap((line) => {
@@ -168,7 +173,7 @@ export function OrdersFlow() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [showSummary, setShowSummary] = useState(false);
-  const [payment, setPayment] = useState<ApiPaymentMethod | null>(null);
+  const [payment, setPayment] = useState<PaymentChoice | null>(null);
   const [placedOrder, setPlacedOrder] = useState<ApiOrder | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [variantTarget, setVariantTarget] = useState<ApiProduct | null>(null);
@@ -383,9 +388,10 @@ export function OrdersFlow() {
     if (!payment || !currentCustomer) return;
     setSubmitting(true);
     try {
-      const order = await createOrder({
+      const paymentMethod = payment === "PENDING" ? undefined : payment;
+      const createdOrder = await createOrder({
         clienteCpf: currentCustomer.cpf,
-        paymentMethod: payment,
+        paymentMethod,
         observation: observation.trim() || undefined,
         items: cart.map((line) => ({
           productId: line.product.id,
@@ -393,6 +399,10 @@ export function OrdersFlow() {
           selectedVariantId: line.selectedVariant?.id,
         })),
       });
+      const order =
+        paymentMethod === undefined
+          ? createdOrder
+          : await markOrderPaid(createdOrder.id, paymentMethod);
       setPlacedOrder(order);
       setShowSummary(false);
       setPayment(null);
@@ -713,7 +723,7 @@ export function OrdersFlow() {
                 <Row label="Pedido nº" value={`#${placedOrder.id}`} />
                 <Row label="Total" value={formatBRL(placedOrder.totalValue)} />
                 <Row label="Forma de pagamento" value={paymentLabel(placedOrder.paymentMethod)} />
-                <Row label="Situação do pagamento" value="Pendente" />
+                <Row label="Situação do pagamento" value={paymentStatusLabel(placedOrder)} />
                 <Row label="Tempo estimado" value="~10 min" />
               </div>
               <button
@@ -798,12 +808,14 @@ export function OrdersFlow() {
                 <div>
                   <p className="text-sm font-semibold mb-2">Forma de pagamento</p>
                   <p className="text-xs text-muted-foreground mb-3">
-                    O pagamento será confirmado pela equipe após o recebimento.
+                    PIX e Dinheiro serão marcados como pagos agora. Pendente fica para confirmar
+                    depois.
                   </p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     {[
                       { v: "PIX" as const, label: "PIX", Icon: Sparkles },
                       { v: "DINHEIRO" as const, label: "Dinheiro", Icon: Banknote },
+                      { v: "PENDING" as const, label: "Pendente", Icon: CreditCard },
                     ].map(({ v, label, Icon }) => (
                       <button
                         key={v}
@@ -957,4 +969,10 @@ function Row({ label, value }: { label: string; value: string }) {
 
 function paymentLabel(p: ApiPaymentMethod | null) {
   return p === "PIX" ? "PIX" : p === "DINHEIRO" ? "Dinheiro" : "Não informada";
+}
+
+function paymentStatusLabel(order: ApiOrder) {
+  if (order.paymentStatus === "PAID") return "Pago";
+  if (order.paymentStatus === "CANCELLED") return "Cancelado";
+  return "Pendente";
 }

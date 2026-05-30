@@ -15,7 +15,6 @@ public record OrderPostDTO(
         @NotNull(message = "O cpf do cliente é obrigatório")
         String clienteCpf,
 
-        @NotNull
         PaymentMethod paymentMethod,
 
         @Size(max = 500)

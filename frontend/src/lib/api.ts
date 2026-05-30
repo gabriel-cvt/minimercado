@@ -69,7 +69,9 @@ export interface ApiOrder {
 
 export interface ApiDashboardSummary {
   ordersToday: number;
+  totalOrders: number;
   revenueToday: number;
+  totalRevenue: number;
   pendingPayments: number;
   preparingOrders: number;
   readyForPickupOrders: number;
@@ -248,7 +250,7 @@ export function getOrder(id: number) {
 export function createOrder(data: {
   items: { productId: number; quantity: number; selectedVariantId?: number }[];
   clienteCpf: string;
-  paymentMethod: ApiPaymentMethod;
+  paymentMethod?: ApiPaymentMethod;
   observation?: string;
 }) {
   return request<ApiOrder>("/api/orders", {

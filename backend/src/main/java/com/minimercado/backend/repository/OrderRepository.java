@@ -47,4 +47,11 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to);
 
+    @Query("""
+            select coalesce(sum(o.totalValue), 0)
+            from #{#entityName} o
+            where o.paymentStatus = :paymentStatus
+            """)
+    Double sumTotalValueByPaymentStatus(@Param("paymentStatus") PaymentStatus paymentStatus);
+
 }
