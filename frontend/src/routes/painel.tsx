@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Flame, CheckCircle2 } from "lucide-react";
 import { getOrders, type ApiOrder } from "@/lib/api";
 import { usePublicOrdersSocket } from "@/websocket/websocket-hooks";
+import type { OrderRealtimeEvent } from "@/websocket/websocket-types";
 
 export const Route = createFileRoute("/painel")({
   head: () => ({ meta: [{ title: "Painel de Pedidos - McDomine's" }] }),
@@ -12,6 +13,7 @@ export const Route = createFileRoute("/painel")({
 });
 
 const DISPLAY_PAGE_SIZE = 500;
+const PUBLIC_ORDERS_QUERY_KEY = ["orders", "public"] as const;
 
 async function getDisplayOrders() {
   const [preparing, ready] = await Promise.all([
@@ -24,22 +26,47 @@ async function getDisplayOrders() {
 function DisplayPage() {
   const queryClient = useQueryClient();
   const [time, setTime] = useState(new Date());
-  const ordersQuery = useQuery({ queryKey: ["orders", "public"], queryFn: getDisplayOrders });
+  const ordersQuery = useQuery({
+    queryKey: PUBLIC_ORDERS_QUERY_KEY,
+    queryFn: getDisplayOrders,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: true,
+  });
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  const refresh = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ["orders", "public"] });
-  }, [queryClient]);
-  usePublicOrdersSocket(refresh);
+  const handlePublicOrderEvent = useCallback((event: OrderRealtimeEvent) => {
+    queryClient.setQueryData<Awaited<ReturnType<typeof getDisplayOrders>>>(
+      PUBLIC_ORDERS_QUERY_KEY,
+      (current) => {
+        if (!current || !event.orderId) return current;
 
-  const preparing = ordersQuery.data?.preparing ?? [];
+        return {
+          preparing:
+            event.status && event.status !== "PENDING"
+              ? current.preparing.filter((order) => order.id !== event.orderId)
+              : current.preparing,
+          ready:
+            event.status && event.status !== "READY_FOR_PICKUP"
+              ? current.ready.filter((order) => order.id !== event.orderId)
+              : current.ready,
+        };
+      },
+    );
+    void queryClient.invalidateQueries({ queryKey: PUBLIC_ORDERS_QUERY_KEY });
+  }, [queryClient]);
+  usePublicOrdersSocket(handlePublicOrderEvent);
+
+  const preparing = (ordersQuery.data?.preparing ?? []).filter(
+    (order) => order.status === "PENDING",
+  );
   const ready = (ordersQuery.data?.ready ?? []).filter(
     (order) =>
-      order.readyAt === null || time.getTime() - new Date(order.readyAt).getTime() < 300_000,
+      order.status === "READY_FOR_PICKUP" &&
+      (order.readyAt === null || time.getTime() - new Date(order.readyAt).getTime() < 300_000),
   );
 
   return (

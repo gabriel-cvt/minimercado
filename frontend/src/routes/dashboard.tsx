@@ -115,6 +115,18 @@ function DashboardPage() {
     [pendingOrdersQuery.data],
   );
   const data = useMemo(() => computeDashboard(orders, pendingOrders), [orders, pendingOrders]);
+  const totalOrders = Math.max(
+    summary?.totalOrders ?? ordersQuery.data?.totalElements ?? orders.length,
+    summary?.ordersToday ?? 0,
+  );
+  const loadedPaidRevenue = orders
+    .filter((order) => order.paymentStatus === "PAID")
+    .reduce((sum, order) => sum + order.totalValue, 0);
+  const totalRevenue = Math.max(
+    summary?.totalRevenue ?? 0,
+    summary?.revenueToday ?? 0,
+    loadedPaidRevenue,
+  );
   const paymentMethods = (analytics?.paymentMethods ?? []).map((metric) => ({
     name: metric.paymentMethod === "DINHEIRO" ? "Dinheiro" : metric.paymentMethod,
     value: metric.ordersCount,
@@ -171,7 +183,7 @@ function DashboardPage() {
         <BalanceHighlight
           label="Saldo em conta"
           title="Faturamento geral"
-          value={formatBRL(summary?.totalRevenue ?? 0)}
+          value={formatBRL(totalRevenue)}
           detail="Total recebido em pedidos pagos"
           icon={Wallet}
           tone="finance"
@@ -179,7 +191,7 @@ function DashboardPage() {
         <BalanceHighlight
           label="Movimento total"
           title="Pedidos totais"
-          value={summary?.totalOrders ?? 0}
+          value={totalOrders}
           detail="Pedidos registrados desde o início"
           icon={ShoppingBag}
           tone="orders"
