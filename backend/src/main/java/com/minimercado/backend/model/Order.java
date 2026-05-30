@@ -23,7 +23,7 @@ public class Order {
     private Long id;
 
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
-    private LocalDateTime orderTime = LocalDateTime.now();
+    private LocalDateTime orderTime;
 
     private LocalDateTime readyAt;
 

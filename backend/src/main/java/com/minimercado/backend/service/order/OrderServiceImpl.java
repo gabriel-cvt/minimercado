@@ -32,6 +32,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -49,6 +50,7 @@ public class OrderServiceImpl implements OrderService{
     private final ProductRepository productRepository;
     private final OrderMapper mapper;
     private final ApplicationEventPublisher eventPublisher;
+    private final Clock clock;
 
     @Override
     @Transactional(readOnly = true)
@@ -84,6 +86,7 @@ public class OrderServiceImpl implements OrderService{
     @Transactional
     public OrderResponseDTO create(OrderPostDTO data) {
         Order order = new Order();
+        order.setOrderTime(LocalDateTime.now(clock));
         Client client = clientService.findEntityByCpf(data.clienteCpf());
         order.setClient(client);
 
@@ -170,7 +173,7 @@ public class OrderServiceImpl implements OrderService{
         increaseStock(order.getItems());
         order.setStatus(OrderStatus.CANCELLED);
         order.setPaymentStatus(PaymentStatus.CANCELLED);
-        order.setCancelledAt(LocalDateTime.now());
+        order.setCancelledAt(LocalDateTime.now(clock));
         Order savedOrder = orderRepository.save(order);
 
         publishKitchenEvent(savedOrder, OrderKitchenEventType.CANCELLED);
@@ -197,7 +200,7 @@ public class OrderServiceImpl implements OrderService{
 
         OrderStatus previousStatus = order.getStatus();
         order.setStatus(OrderStatus.READY_FOR_PICKUP);
-        order.setReadyAt(LocalDateTime.now());
+        order.setReadyAt(LocalDateTime.now(clock));
         Order savedOrder = orderRepository.save(order);
 
         // Evento para avisar que o pedido está pronto para coleta
@@ -228,7 +231,7 @@ public class OrderServiceImpl implements OrderService{
         }
 
         order.setPaymentStatus(PaymentStatus.PAID);
-        order.setPaidAt(LocalDateTime.now());
+        order.setPaidAt(LocalDateTime.now(clock));
 
         Order savedOrder = orderRepository.save(order);
         publishRealtimeEvent(savedOrder, OrderRealtimeEventType.ORDER_PAID, null, null);
@@ -247,7 +250,7 @@ public class OrderServiceImpl implements OrderService{
 
         OrderStatus previousStatus = order.getStatus();
         order.setStatus(OrderStatus.FINISHED);
-        order.setFinishedAt(LocalDateTime.now());
+        order.setFinishedAt(LocalDateTime.now(clock));
         Order savedOrder = orderRepository.save(order);
         publishRealtimeEvent(savedOrder, OrderRealtimeEventType.ORDER_STATUS_CHANGED, previousStatus, savedOrder.getStatus());
         return mapper.toResponse(savedOrder);
