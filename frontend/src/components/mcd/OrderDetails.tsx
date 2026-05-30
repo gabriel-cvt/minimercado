@@ -71,7 +71,9 @@ const statusConfig: Record<
   },
 };
 
-export function OrderDetails() {
+type OrderDetailsMode = "active" | "all";
+
+export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [confirmFinish, setConfirmFinish] = useState(false);
@@ -82,13 +84,15 @@ export function OrderDetails() {
   const [paymentMethod, setPaymentMethod] = useState<ApiPaymentMethod>("PIX");
   const [, force] = useState(0);
   const ordersQuery = useQuery({
-    queryKey: ["orders", "details"],
-    queryFn: () => getOrders({ size: 100, sort: "orderTime,desc" }),
+    queryKey: ["orders", "details", mode],
+    queryFn: () => getOrders({ size: 500, sort: "orderTime,desc" }),
   });
   const orders = useMemo(() => ordersQuery.data?.content ?? [], [ordersQuery.data]);
-  const hasLiveOrders = orders.some(
-    (order) => order.status !== "FINISHED" && order.status !== "CANCELLED",
+  const visibleOrders = useMemo(
+    () => (mode === "active" ? orders.filter(isActiveOrder) : orders),
+    [mode, orders],
   );
+  const hasLiveOrders = visibleOrders.some(isActiveOrder);
   const detailQuery = useQuery({
     queryKey: ["orders", "detail", selectedId],
     queryFn: () => getOrder(selectedId!),
@@ -102,8 +106,15 @@ export function OrderDetails() {
   }, [hasLiveOrders]);
 
   useEffect(() => {
-    if (selectedId === null && orders[0]) setSelectedId(orders[0].id);
-  }, [orders, selectedId]);
+    if (visibleOrders.length === 0) {
+      if (selectedId !== null) setSelectedId(null);
+      return;
+    }
+
+    if (selectedId === null || !visibleOrders.some((order) => order.id === selectedId)) {
+      setSelectedId(visibleOrders[0].id);
+    }
+  }, [selectedId, visibleOrders]);
 
   useEffect(() => {
     setActionsOpen(false);
@@ -211,12 +222,14 @@ export function OrderDetails() {
   });
 
   const selected = detailQuery.data ?? orders.find((order) => order.id === selectedId);
-  const active = orders.filter(
-    (order) => order.status === "PENDING" || order.status === "READY_FOR_PICKUP",
-  );
-  const closed = orders.filter(
-    (order) => order.status === "FINISHED" || order.status === "CANCELLED",
-  );
+  const visibleSelected = selected && (mode === "all" || isActiveOrder(selected)) ? selected : null;
+  const activeCount = orders.filter(isActiveOrder).length;
+  const closedCount = orders.length - activeCount;
+  const title = mode === "active" ? "Detalhamento de Pedidos" : "Todos os Pedidos";
+  const subtitle =
+    mode === "active"
+      ? `${activeCount} pedido(s) ativo(s)`
+      : `${orders.length} pedido(s) no total · ${closedCount} encerrado(s)`;
 
   return (
     <div>
@@ -225,8 +238,8 @@ export function OrderDetails() {
           <ClipboardList className="w-6 h-6 text-primary-foreground" />
         </div>
         <div>
-          <h2 className="text-2xl md:text-3xl font-black">Detalhamento de Pedidos</h2>
-          <p className="text-muted-foreground">{active.length} pedido(s) na fila</p>
+          <h2 className="text-2xl md:text-3xl font-black">{title}</h2>
+          <p className="text-muted-foreground">{subtitle}</p>
         </div>
       </div>
 
@@ -238,19 +251,23 @@ export function OrderDetails() {
         <div className="bg-card rounded-3xl border p-16 text-center text-destructive">
           Não foi possível carregar os pedidos.
         </div>
-      ) : orders.length === 0 ? (
+      ) : visibleOrders.length === 0 ? (
         <div className="bg-card rounded-3xl border p-16 text-center">
           <ClipboardList className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
-          <p className="text-xl font-bold mb-1">Nenhum pedido ainda</p>
+          <p className="text-xl font-bold mb-1">
+            {mode === "active" ? "Nenhum pedido ativo" : "Nenhum pedido ainda"}
+          </p>
           <p className="text-muted-foreground">
-            Crie um pedido na aba de realização para visualizá-lo aqui.
+            {mode === "active"
+              ? "Pedidos finalizados e cancelados ficam na aba Todos os Pedidos."
+              : "Crie um pedido na aba de realização para visualizá-lo aqui."}
           </p>
         </div>
       ) : (
         <div className="grid lg:grid-cols-[360px_1fr] gap-6">
           <div className="space-y-3 lg:max-h-[calc(100vh-260px)] lg:overflow-y-auto pr-1">
             <AnimatePresence initial={false}>
-              {[...active, ...closed].map((order) => (
+              {visibleOrders.map((order) => (
                 <OrderListButton
                   key={order.id}
                   order={order}
@@ -261,9 +278,9 @@ export function OrderDetails() {
             </AnimatePresence>
           </div>
 
-          {selected && (
+          {visibleSelected && (
             <motion.div
-              key={selected.id}
+              key={visibleSelected.id}
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               className="bg-card rounded-3xl shadow-card border p-6 md:p-8 lg:max-h-[calc(100vh-260px)] overflow-y-auto"
@@ -271,9 +288,9 @@ export function OrderDetails() {
               <div className="flex items-start justify-between flex-wrap gap-4 mb-6">
                 <div>
                   <p className="text-muted-foreground text-sm font-semibold">Pedido</p>
-                  <h2 className="text-4xl font-black">#{selected.id}</h2>
+                  <h2 className="text-4xl font-black">#{visibleSelected.id}</h2>
                   <p className="text-muted-foreground mt-1">
-                    {selected.client.name} · {formatTime(selected.orderTime)}
+                    {visibleSelected.client.name} · {formatTime(visibleSelected.orderTime)}
                   </p>
                 </div>
                 <div className="text-right">
@@ -281,18 +298,18 @@ export function OrderDetails() {
                     Total
                   </p>
                   <p className="text-3xl font-black text-primary">
-                    {formatBRL(selected.totalValue)}
+                    {formatBRL(visibleSelected.totalValue)}
                   </p>
                   <p
-                    className={`text-xs font-semibold mt-1 ${selected.paymentStatus === "PAID" ? "text-status-finished" : "text-destructive"}`}
+                    className={`text-xs font-semibold mt-1 ${visibleSelected.paymentStatus === "PAID" ? "text-status-finished" : "text-destructive"}`}
                   >
-                    {paymentStatusLabel(selected)}
+                    {paymentStatusLabel(visibleSelected)}
                   </p>
                 </div>
               </div>
 
               <div className="space-y-2 mb-6">
-                {selected.items.map((item) => (
+                {visibleSelected.items.map((item) => (
                   <div
                     key={`${item.productId}-${item.selectedVariantId ?? "base"}`}
                     className="flex items-center gap-3 p-4 bg-muted/40 rounded-xl"
@@ -312,27 +329,29 @@ export function OrderDetails() {
                   </div>
                 ))}
               </div>
-              {selected.observation && (
+              {visibleSelected.observation && (
                 <div className="mb-6 rounded-xl border border-status-preparing/30 bg-status-preparing/10 p-4">
                   <p className="text-xs font-black uppercase text-status-assembly mb-1">
                     Observação
                   </p>
-                  <p className="text-sm font-semibold">{selected.observation}</p>
+                  <p className="text-sm font-semibold">{visibleSelected.observation}</p>
                 </div>
               )}
 
               <div className="space-y-3">
                 <OrderActionMenu
-                  order={selected}
+                  order={visibleSelected}
                   open={actionsOpen}
                   onToggle={() => setActionsOpen((open) => !open)}
                   onEdit={() => {
                     setActionsOpen(false);
-                    setEditTarget(selected);
+                    setEditTarget(visibleSelected);
                   }}
                   onPay={() => {
                     setActionsOpen(false);
-                    setPaymentMethod(selected.paymentMethod === "DINHEIRO" ? "DINHEIRO" : "PIX");
+                    setPaymentMethod(
+                      visibleSelected.paymentMethod === "DINHEIRO" ? "DINHEIRO" : "PIX",
+                    );
                     setConfirmPayment(true);
                   }}
                   onFinish={() => {
@@ -344,7 +363,7 @@ export function OrderDetails() {
                     setConfirmCancel(true);
                   }}
                 />
-                <StatusNotice status={selected.status} />
+                <StatusNotice status={visibleSelected.status} />
               </div>
             </motion.div>
           )}
@@ -362,7 +381,7 @@ export function OrderDetails() {
             }
           />
         )}
-        {confirmPayment && selected && (
+        {confirmPayment && visibleSelected && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -377,9 +396,11 @@ export function OrderDetails() {
               onClick={(event) => event.stopPropagation()}
               className="bg-card rounded-3xl shadow-elegant max-w-sm w-full p-6"
             >
-              <h3 className="text-xl font-black mb-2">Confirmar pagamento #{selected.id}</h3>
+              <h3 className="text-xl font-black mb-2">
+                Confirmar pagamento #{visibleSelected.id}
+              </h3>
               <p className="text-muted-foreground text-sm mb-5">
-                Informe a forma recebida para registrar {formatBRL(selected.totalValue)}.
+                Informe a forma recebida para registrar {formatBRL(visibleSelected.totalValue)}.
               </p>
               <div className="grid grid-cols-2 gap-3 mb-5">
                 <PaymentMethodButton
@@ -401,7 +422,9 @@ export function OrderDetails() {
                   Cancelar
                 </button>
                 <button
-                  onClick={() => paymentMutation.mutate({ id: selected.id, method: paymentMethod })}
+                  onClick={() =>
+                    paymentMutation.mutate({ id: visibleSelected.id, method: paymentMethod })
+                  }
                   disabled={paymentMutation.isPending}
                   className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-50"
                 >
@@ -411,7 +434,7 @@ export function OrderDetails() {
             </motion.div>
           </motion.div>
         )}
-        {confirmFinish && selected && (
+        {confirmFinish && visibleSelected && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -427,9 +450,11 @@ export function OrderDetails() {
               className="bg-card rounded-3xl shadow-elegant max-w-sm p-6 text-center"
             >
               <CheckCircle2 className="w-14 h-14 mx-auto mb-4 text-status-finished" />
-              <h3 className="text-xl font-black mb-2">Finalizar pedido #{selected.id}?</h3>
+              <h3 className="text-xl font-black mb-2">
+                Finalizar pedido #{visibleSelected.id}?
+              </h3>
               <p className="text-muted-foreground text-sm mb-5">
-                {selected.paymentStatus === "PENDING"
+                {visibleSelected.paymentStatus === "PENDING"
                   ? "O pedido será retirado e continuará com pagamento pendente nos resultados."
                   : "O pedido será encerrado após a retirada."}
               </p>
@@ -441,7 +466,7 @@ export function OrderDetails() {
                   Cancelar
                 </button>
                 <button
-                  onClick={() => finishMutation.mutate(selected.id)}
+                  onClick={() => finishMutation.mutate(visibleSelected.id)}
                   disabled={finishMutation.isPending}
                   className="flex-1 py-3 rounded-xl bg-status-finished text-white font-bold disabled:opacity-50"
                 >
@@ -451,7 +476,7 @@ export function OrderDetails() {
             </motion.div>
           </motion.div>
         )}
-        {confirmCancel && selected && (
+        {confirmCancel && visibleSelected && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -467,7 +492,9 @@ export function OrderDetails() {
               className="bg-card rounded-3xl shadow-elegant max-w-md p-6 text-center"
             >
               <XCircle className="w-14 h-14 mx-auto mb-4 text-destructive" />
-              <h3 className="text-xl font-black mb-2">Cancelar pedido #{selected.id}?</h3>
+              <h3 className="text-xl font-black mb-2">
+                Cancelar pedido #{visibleSelected.id}?
+              </h3>
               <p className="text-muted-foreground text-sm mb-3">
                 O pedido será retirado da operação e suas unidades voltarão ao estoque.
               </p>
@@ -479,7 +506,7 @@ export function OrderDetails() {
                   Voltar
                 </button>
                 <button
-                  onClick={() => cancelMutation.mutate(selected.id)}
+                  onClick={() => cancelMutation.mutate(visibleSelected.id)}
                   disabled={cancelMutation.isPending}
                   className="flex-1 py-3 rounded-xl bg-destructive text-white font-bold disabled:opacity-50"
                 >
@@ -1099,6 +1126,10 @@ function OrderListButton({
       </div>
     </motion.button>
   );
+}
+
+function isActiveOrder(order: ApiOrder) {
+  return order.status === "PENDING" || order.status === "READY_FOR_PICKUP";
 }
 
 function orderElapsedText(order: ApiOrder) {

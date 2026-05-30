@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { ShoppingBag, ClipboardList } from "lucide-react";
+import { History, ShoppingBag, ClipboardList } from "lucide-react";
 import { OrdersFlow } from "@/components/mcd/OrdersFlow";
 import { OrderDetails } from "@/components/mcd/OrderDetails";
 
@@ -13,6 +13,7 @@ export const Route = createFileRoute("/orders")({
 const tabs = [
   { id: "flow", label: "Realização de Pedidos", icon: ShoppingBag },
   { id: "details", label: "Detalhamento de Pedidos", icon: ClipboardList },
+  { id: "history", label: "Todos os Pedidos", icon: History },
 ] as const;
 
 type TabId = (typeof tabs)[number]["id"];
@@ -47,7 +48,8 @@ function OrdersPage() {
 
       <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
         {tab === "flow" && <OrdersFlow />}
-        {tab === "details" && <OrderDetails />}
+        {tab === "details" && <OrderDetails mode="active" />}
+        {tab === "history" && <OrderDetails mode="all" />}
       </motion.div>
     </div>
   );

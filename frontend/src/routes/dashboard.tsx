@@ -793,7 +793,7 @@ function exportPendingCustomersCsv(customers: PendingCustomer[]) {
       "Telefone",
       "Valor pendente",
       "Pedidos",
-      "Ultimo pedido",
+      "Pedidos pendentes",
     ],
     ...customers.map((customer) => [
       customer.name,
@@ -805,7 +805,10 @@ function exportPendingCustomersCsv(customers: PendingCustomer[]) {
         maximumFractionDigits: 2,
       }),
       String(customer.count),
-      formatDateTime(customer.lastAt),
+      customer.paymentOrders
+        .map((order) => `#${order.id}`)
+        .sort((first, second) => Number(first.slice(1)) - Number(second.slice(1)))
+        .join(", "),
     ]),
   ];
   const csv = rows.map((row) => row.map(escapeCsvCell).join(";")).join("\n");
