@@ -2,7 +2,8 @@ import type { ApiOrderStatus, ApiPaymentStatus } from "@/websocket/websocket-typ
 
 const API_BASE_URL = import.meta.env?.VITE_API_URL || "http://localhost:8080";
 
-export type ApiPaymentMethod = "PIX" | "DINHEIRO";
+export type ApiPaymentMethod = "PIX" | "DINHEIRO" | "CARTAO";
+export type ApiProductVariantSelectionMode = "SINGLE" | "MULTIPLE";
 export type ApiProductIcon =
   | "GENERAL"
   | "SANDWICH"
@@ -38,6 +39,7 @@ export interface ApiProduct {
   hasVariants: boolean;
   variantType: string | null;
   variantSelectionRequired: boolean;
+  variantSelectionMode: ApiProductVariantSelectionMode;
   variants: ApiProductVariant[];
 }
 
@@ -49,6 +51,8 @@ export interface ApiOrderItem {
   subtotal: number;
   selectedVariantId: number | null;
   selectedVariantName: string | null;
+  selectedVariantIds?: number[];
+  selectedVariantNames?: string[];
 }
 
 export interface ApiOrder {
@@ -80,6 +84,13 @@ export interface ApiDashboardSummary {
   averagePreparationMinutes: number;
 }
 
+export interface ApiTopProduct {
+  productId: number;
+  name: string;
+  quantitySold: number;
+  totalValue: number;
+}
+
 export interface ApiDashboardAnalytics {
   averagePreparationMinutes: number;
   averageTicket: number;
@@ -92,12 +103,7 @@ export interface ApiDashboardAnalytics {
     ordersCount: number;
     totalSpent: number;
   }[];
-  topProducts: {
-    productId: number;
-    name: string;
-    quantitySold: number;
-    totalValue: number;
-  }[];
+  topProducts: ApiTopProduct[];
 }
 
 export interface Page<T> {
@@ -156,6 +162,19 @@ export function getClientByCpf(cpf: string) {
   return request<ApiClient>(`/api/clients/cpf/${encodeURIComponent(cpf)}`);
 }
 
+export function searchClients(
+  params: {
+    query?: string;
+    page?: number;
+    size?: number;
+    sort?: string;
+  } = {},
+) {
+  return request<Page<ApiClient>>(
+    `/api/clients${queryString({ page: 0, size: 8, sort: "name,asc", ...params })}`,
+  );
+}
+
 export function createClient(data: { name: string; cpf: string; phoneNumber?: string; team: string }) {
   return request<ApiClient>("/api/clients", {
     method: "POST",
@@ -185,6 +204,7 @@ export interface ProductWriteData {
   hasVariants: boolean;
   variantType?: string;
   variantSelectionRequired: boolean;
+  variantSelectionMode: ApiProductVariantSelectionMode;
   variants: { id?: number; name: string; available: boolean }[];
 }
 
@@ -248,7 +268,12 @@ export function getOrder(id: number) {
 }
 
 export function createOrder(data: {
-  items: { productId: number; quantity: number; selectedVariantId?: number }[];
+  items: {
+    productId: number;
+    quantity: number;
+    selectedVariantId?: number;
+    selectedVariantIds?: number[];
+  }[];
   clienteCpf: string;
   paymentMethod?: ApiPaymentMethod;
   observation?: string;
@@ -262,7 +287,12 @@ export function createOrder(data: {
 export function updateOrder(
   id: number,
   data: {
-    items: { productId: number; quantity: number; selectedVariantId?: number }[];
+    items: {
+      productId: number;
+      quantity: number;
+      selectedVariantId?: number;
+      selectedVariantIds?: number[];
+    }[];
     clienteCpf: string;
     observation?: string;
   },
@@ -298,4 +328,8 @@ export function getDashboardSummary() {
 
 export function getDashboardAnalytics() {
   return request<ApiDashboardAnalytics>("/api/dashboard/analytics");
+}
+
+export function getDashboardTopProducts() {
+  return request<ApiTopProduct[]>("/api/dashboard/top-products");
 }

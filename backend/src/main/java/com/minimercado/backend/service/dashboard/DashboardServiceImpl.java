@@ -79,8 +79,18 @@ public class DashboardServiceImpl implements DashboardService {
                 paymentMethods(paidOrders),
                 ordersByHour(validOrders),
                 topClients(paidOrders),
-                topProducts(validOrders)
+                topProducts(validOrders, 5)
         );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TopProductDTO> getTopProducts() {
+        List<Order> validOrders = orderRepository.findAll().stream()
+                .filter(order -> order.getStatus() != OrderStatus.CANCELLED)
+                .toList();
+
+        return topProducts(validOrders, Long.MAX_VALUE);
     }
 
     private Double averagePreparationMinutes(List<Order> orders) {
@@ -144,7 +154,7 @@ public class DashboardServiceImpl implements DashboardService {
                 .toList();
     }
 
-    private List<TopProductDTO> topProducts(List<Order> orders) {
+    private List<TopProductDTO> topProducts(List<Order> orders, long limit) {
         Map<Long, List<OrderItem>> groupedItems = orders.stream()
                 .flatMap(order -> order.getItems().stream())
                 .collect(Collectors.groupingBy(item -> item.getProduct().getId()));
@@ -156,8 +166,16 @@ public class DashboardServiceImpl implements DashboardService {
                         items.stream().mapToLong(OrderItem::getQuantity).sum(),
                         roundCurrency(items.stream().mapToDouble(OrderItem::getSubtotal).sum())
                 ))
-                .sorted((first, second) -> Long.compare(second.quantitySold(), first.quantitySold()))
-                .limit(5)
+                .sorted((first, second) -> {
+                    int quantityComparison = Long.compare(second.quantitySold(), first.quantitySold());
+                    if (quantityComparison != 0) return quantityComparison;
+
+                    int valueComparison = Double.compare(second.totalValue(), first.totalValue());
+                    if (valueComparison != 0) return valueComparison;
+
+                    return first.name().compareToIgnoreCase(second.name());
+                })
+                .limit(limit)
                 .toList();
     }
 

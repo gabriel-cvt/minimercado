@@ -1,5 +1,6 @@
 package com.minimercado.backend.dto.product;
 
+import com.minimercado.backend.enums.ProductVariantSelectionMode;
 import com.minimercado.backend.model.ProductIcon;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -14,6 +15,7 @@ public record ProductPostDTO(
         Boolean hasVariants,
         String variantType,
         Boolean variantSelectionRequired,
+        ProductVariantSelectionMode variantSelectionMode,
         @Valid List<ProductVariantInputDTO> variants
 ) {
 }

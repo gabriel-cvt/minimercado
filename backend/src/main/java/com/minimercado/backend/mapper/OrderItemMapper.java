@@ -19,7 +19,11 @@ public class OrderItemMapper {
                 item.getQuantity(),
                 item.getSubtotal(),
                 item.getSelectedVariantId(),
-                item.getSelectedVariantName()
+                item.getSelectedVariantNames() == null
+                        ? item.getSelectedVariantName()
+                        : item.getSelectedVariantNames(),
+                item.selectedVariantIdsOrLegacy(),
+                item.selectedVariantNamesOrLegacy()
         );
     }
 }

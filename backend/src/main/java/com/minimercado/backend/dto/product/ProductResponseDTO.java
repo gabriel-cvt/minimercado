@@ -1,5 +1,6 @@
 package com.minimercado.backend.dto.product;
 
+import com.minimercado.backend.enums.ProductVariantSelectionMode;
 import com.minimercado.backend.model.ProductIcon;
 import java.util.List;
 
@@ -12,5 +13,6 @@ public record ProductResponseDTO(
     Boolean hasVariants,
     String variantType,
     Boolean variantSelectionRequired,
+    ProductVariantSelectionMode variantSelectionMode,
     List<ProductVariantResponseDTO> variants
 ) {}

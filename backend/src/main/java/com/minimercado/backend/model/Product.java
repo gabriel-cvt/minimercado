@@ -1,5 +1,6 @@
 package com.minimercado.backend.model;
 
+import com.minimercado.backend.enums.ProductVariantSelectionMode;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -41,6 +42,9 @@ public class Product {
 
     @Column(nullable = false)
     private Boolean variantSelectionRequired = false;
+
+    @Enumerated(EnumType.STRING)
+    private ProductVariantSelectionMode variantSelectionMode = ProductVariantSelectionMode.SINGLE;
 
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ProductVariant> variants = new ArrayList<>();

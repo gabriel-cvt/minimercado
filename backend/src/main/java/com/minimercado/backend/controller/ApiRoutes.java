@@ -25,4 +25,5 @@ public class ApiRoutes {
     public static final String API_DASHBOARD = API + "/dashboard";
     public static final String API_DASHBOARD_SUMMARY = API_DASHBOARD + "/summary";
     public static final String API_DASHBOARD_ANALYTICS = API_DASHBOARD + "/analytics";
+    public static final String API_DASHBOARD_TOP_PRODUCTS = API_DASHBOARD + "/top-products";
 }

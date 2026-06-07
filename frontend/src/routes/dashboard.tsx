@@ -33,10 +33,12 @@ import { toast } from "sonner";
 import {
   getDashboardAnalytics,
   getDashboardSummary,
+  getDashboardTopProducts,
   getOrders,
   markOrderPaid,
   type ApiOrder,
   type ApiPaymentMethod,
+  type ApiTopProduct,
 } from "@/lib/api";
 import { formatBRL, formatCPF, formatDateTime, formatPhone } from "@/lib/format";
 import { useOrdersSocket } from "@/websocket/websocket-hooks";
@@ -49,6 +51,7 @@ export const Route = createFileRoute("/dashboard")({
 const PAYMENT_COLORS: Record<string, string> = {
   PIX: "var(--chart-2)",
   Dinheiro: "var(--status-finished)",
+  "Cartão": "var(--chart-4)",
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -106,6 +109,22 @@ function DashboardPage() {
         duration: Infinity,
       }),
   });
+  const topProductsExportMutation = useMutation({
+    mutationFn: getDashboardTopProducts,
+    onSuccess: (products) => {
+      if (products.length === 0) {
+        toast.info("Nenhum produto pedido para exportar.");
+        return;
+      }
+
+      exportTopProductsCsv(products);
+      toast.success("Planilha de produtos mais pedidos exportada.");
+    },
+    onError: () =>
+      toast.error("Não foi possível exportar os produtos mais pedidos.", {
+        duration: Infinity,
+      }),
+  });
 
   const summary = summaryQuery.data;
   const analytics = analyticsQuery.data;
@@ -128,7 +147,7 @@ function DashboardPage() {
     loadedPaidRevenue,
   );
   const paymentMethods = (analytics?.paymentMethods ?? []).map((metric) => ({
-    name: metric.paymentMethod === "DINHEIRO" ? "Dinheiro" : metric.paymentMethod,
+    name: paymentMethodLabel(metric.paymentMethod),
     value: metric.ordersCount,
   }));
   const ordersByHour = (analytics?.ordersByHour ?? []).map((metric) => ({
@@ -251,6 +270,19 @@ function DashboardPage() {
           tone="brand"
           className="lg:col-span-2"
         >
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span className="text-xs font-bold text-muted-foreground">
+              Ranking por quantidade pedida
+            </span>
+            <button
+              onClick={() => topProductsExportMutation.mutate()}
+              disabled={topProductsExportMutation.isPending}
+              className="inline-flex items-center gap-2 rounded-xl border border-white/80 bg-white/55 px-3 py-2 text-xs font-bold text-foreground shadow-sm backdrop-blur-md transition-colors hover:border-primary/40 hover:bg-white/75 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              {topProductsExportMutation.isPending ? "Exportando..." : "Exportar planilha"}
+            </button>
+          </div>
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={analytics?.topProducts ?? []} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" strokeOpacity={0.7} />
@@ -492,10 +524,11 @@ function DashboardPage() {
                   : "A confirmação preservará a forma de pagamento informada em cada pedido."}
               </p>
               {pendingTarget.hasMissingPaymentMethod && (
-                <div className="mb-5 grid grid-cols-2 gap-2">
+                <div className="mb-5 grid grid-cols-3 gap-2">
                   {[
                     { value: "PIX" as const, label: "PIX" },
                     { value: "DINHEIRO" as const, label: "Dinheiro" },
+                    { value: "CARTAO" as const, label: "Cartão" },
                   ].map((option) => (
                     <button
                       key={option.value}
@@ -734,6 +767,7 @@ interface PendingCustomer {
 interface PendingPaymentOrder {
   id: number;
   paymentMethod: ApiPaymentMethod | null;
+  itemsSummary: string;
 }
 
 interface PendingPaymentConfirmation {
@@ -768,7 +802,11 @@ function computeDashboard(orders: ApiOrder[], pendingOrders: ApiOrder[]) {
       current.count += 1;
       current.team ||= order.client.team ?? "";
       current.phoneNumber ||= order.client.phoneNumber ?? "";
-      current.paymentOrders.push({ id: order.id, paymentMethod: order.paymentMethod });
+      current.paymentOrders.push({
+        id: order.id,
+        paymentMethod: order.paymentMethod,
+        itemsSummary: formatPendingOrderItems(order),
+      });
       if (order.paymentMethod === null) current.hasMissingPaymentMethod = true;
       if (new Date(order.orderTime) > new Date(current.lastAt)) current.lastAt = order.orderTime;
       pendingMap.set(order.client.cpf, current);
@@ -780,6 +818,43 @@ function computeDashboard(orders: ApiOrder[], pendingOrders: ApiOrder[]) {
       (first, second) => second.amount - first.amount,
     ),
   };
+}
+
+function exportTopProductsCsv(products: ApiTopProduct[]) {
+  if (typeof window === "undefined" || products.length === 0) return;
+
+  const sortedProducts = [...products].sort((first, second) => {
+    const quantityComparison = second.quantitySold - first.quantitySold;
+    if (quantityComparison !== 0) return quantityComparison;
+
+    const valueComparison = second.totalValue - first.totalValue;
+    if (valueComparison !== 0) return valueComparison;
+
+    return first.name.localeCompare(second.name, "pt-BR");
+  });
+  const rows = [
+    ["Posicao", "Produto", "Quantidade pedida", "Valor vendido"],
+    ...sortedProducts.map((product, index) => [
+      String(index + 1),
+      product.name,
+      String(product.quantitySold),
+      product.totalValue.toLocaleString("pt-BR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+    ]),
+  ];
+  const csv = rows.map((row) => row.map(escapeCsvCell).join(";")).join("\n");
+  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+
+  link.href = url;
+  link.download = `produtos-mais-pedidos-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function exportPendingCustomersCsv(customers: PendingCustomer[]) {
@@ -794,6 +869,7 @@ function exportPendingCustomersCsv(customers: PendingCustomer[]) {
       "Valor pendente",
       "Pedidos",
       "Pedidos pendentes",
+      "Itens dos pedidos",
     ],
     ...customers.map((customer) => [
       customer.name,
@@ -809,6 +885,10 @@ function exportPendingCustomersCsv(customers: PendingCustomer[]) {
         .map((order) => `#${order.id}`)
         .sort((first, second) => Number(first.slice(1)) - Number(second.slice(1)))
         .join(", "),
+      [...customer.paymentOrders]
+        .sort((first, second) => first.id - second.id)
+        .map((order) => `#${order.id}: ${order.itemsSummary}`)
+        .join(" || "),
     ]),
   ];
   const csv = rows.map((row) => row.map(escapeCsvCell).join(";")).join("\n");
@@ -822,6 +902,29 @@ function exportPendingCustomersCsv(customers: PendingCustomer[]) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function formatPendingOrderItems(order: ApiOrder) {
+  return order.items.map(formatPendingOrderItem).join(" | ");
+}
+
+function formatPendingOrderItem(item: ApiOrder["items"][number]) {
+  const variants = selectedVariantNamesForItem(item);
+  const variantText = variants.length > 0 ? ` (${variants.join(", ")})` : "";
+  return `${item.productName}${variantText} x${item.quantity}`;
+}
+
+function selectedVariantNamesForItem(item: ApiOrder["items"][number]) {
+  if (item.selectedVariantNames && item.selectedVariantNames.length > 0) {
+    return item.selectedVariantNames;
+  }
+  return item.selectedVariantName ? [item.selectedVariantName] : [];
+}
+
+function paymentMethodLabel(paymentMethod: ApiPaymentMethod) {
+  if (paymentMethod === "DINHEIRO") return "Dinheiro";
+  if (paymentMethod === "CARTAO") return "Cartão";
+  return "PIX";
 }
 
 function escapeCsvCell(value: string) {

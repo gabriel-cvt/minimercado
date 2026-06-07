@@ -9,9 +9,12 @@ import {
   Clock,
   Flame,
   CheckCircle2,
+  CreditCard,
+  FileSpreadsheet,
   Minus,
   Pencil,
   Package,
+  PackageCheck,
   Plus,
   ChefHat,
   QrCode,
@@ -27,19 +30,27 @@ import {
   getOrders,
   getProducts,
   markOrderPaid,
+  markOrderReady,
   updateOrder,
   type ApiOrder,
   type ApiPaymentMethod,
   type ApiProduct,
 } from "@/lib/api";
-import { formatBRL, formatCPF, formatTime, isValidCPF } from "@/lib/format";
+import {
+  formatBRL,
+  formatCPF,
+  formatDateTime,
+  formatPhone,
+  formatTime,
+  isValidCPF,
+} from "@/lib/format";
 import type { ApiOrderStatus, OrderRealtimeEvent } from "@/websocket/websocket-types";
 import { useOrdersSocket } from "@/websocket/websocket-hooks";
 import {
   clearSuppressedRealtimeToast,
   suppressNextRealtimeToast,
 } from "@/websocket/websocket-events";
-import { fuzzyFilterByName } from "@/lib/fuzzy-search";
+import { fuzzyFilterByName, normalizeSearchText } from "@/lib/fuzzy-search";
 
 const statusConfig: Record<
   ApiOrderStatus,
@@ -72,10 +83,15 @@ const statusConfig: Record<
 };
 
 type OrderDetailsMode = "active" | "all";
+const ALL_ORDERS_FETCH_SIZE = 1000;
+const ACTIVE_ORDERS_FETCH_SIZE = 500;
+const ORDER_LIST_PAGE_SIZE = 100;
 
 export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [listPage, setListPage] = useState(0);
+  const [orderSearch, setOrderSearch] = useState("");
   const [confirmFinish, setConfirmFinish] = useState(false);
   const [confirmPayment, setConfirmPayment] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -85,12 +101,47 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
   const [, force] = useState(0);
   const ordersQuery = useQuery({
     queryKey: ["orders", "details", mode],
-    queryFn: () => getOrders({ size: 500, sort: "orderTime,desc" }),
+    queryFn: () =>
+      getOrders({
+        size: mode === "all" ? ALL_ORDERS_FETCH_SIZE : ACTIVE_ORDERS_FETCH_SIZE,
+        sort: "orderTime,desc",
+      }),
+  });
+  const exportMutation = useMutation({
+    mutationFn: fetchAllOrdersForExport,
+    onSuccess: (ordersToExport) => {
+      exportOrdersCsv(ordersToExport);
+      toast.success(`${ordersToExport.length} pedido(s) exportado(s)`);
+    },
+    onError: (error) =>
+      toast.error(actionError(error, "Não foi possível exportar os pedidos."), {
+        duration: Infinity,
+      }),
   });
   const orders = useMemo(() => ordersQuery.data?.content ?? [], [ordersQuery.data]);
+  const normalizedOrderSearch = normalizeSearchText(orderSearch);
+  const orderSearchDigits = orderSearch.replace(/\D/g, "");
+  const hasOrderSearch =
+    mode === "all" && (normalizedOrderSearch.length > 0 || orderSearchDigits.length > 0);
   const visibleOrders = useMemo(
-    () => (mode === "active" ? orders.filter(isActiveOrder) : orders),
-    [mode, orders],
+    () =>
+      mode === "active"
+        ? orders.filter(isActiveOrder)
+        : orders.filter((order) =>
+            matchesOrderSearch(order, normalizedOrderSearch, orderSearchDigits),
+          ),
+    [mode, normalizedOrderSearch, orderSearchDigits, orders],
+  );
+  const totalAvailableOrders = ordersQuery.data?.totalElements ?? orders.length;
+  const listPageCount = Math.max(1, Math.ceil(visibleOrders.length / ORDER_LIST_PAGE_SIZE));
+  const currentListPage = Math.min(listPage, listPageCount - 1);
+  const paginatedOrders = useMemo(
+    () =>
+      visibleOrders.slice(
+        currentListPage * ORDER_LIST_PAGE_SIZE,
+        (currentListPage + 1) * ORDER_LIST_PAGE_SIZE,
+      ),
+    [currentListPage, visibleOrders],
   );
   const hasLiveOrders = visibleOrders.some(isActiveOrder);
   const detailQuery = useQuery({
@@ -106,15 +157,25 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
   }, [hasLiveOrders]);
 
   useEffect(() => {
-    if (visibleOrders.length === 0) {
+    setListPage(0);
+  }, [mode, normalizedOrderSearch, orderSearchDigits]);
+
+  useEffect(() => {
+    if (listPage > listPageCount - 1) {
+      setListPage(Math.max(0, listPageCount - 1));
+    }
+  }, [listPage, listPageCount]);
+
+  useEffect(() => {
+    if (paginatedOrders.length === 0) {
       if (selectedId !== null) setSelectedId(null);
       return;
     }
 
-    if (selectedId === null || !visibleOrders.some((order) => order.id === selectedId)) {
-      setSelectedId(visibleOrders[0].id);
+    if (selectedId === null || !paginatedOrders.some((order) => order.id === selectedId)) {
+      setSelectedId(paginatedOrders[0].id);
     }
-  }, [selectedId, visibleOrders]);
+  }, [paginatedOrders, selectedId]);
 
   useEffect(() => {
     setActionsOpen(false);
@@ -149,6 +210,25 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
         duration: Infinity,
       }),
   });
+  const readyMutation = useMutation({
+    mutationFn: (id: number) => {
+      suppressNextRealtimeToast(id, "pickup");
+      return markOrderReady(id);
+    },
+    onSuccess: async (order) => {
+      queryClient.setQueryData(["orders", "detail", order.id], order);
+      await queryClient.invalidateQueries({ queryKey: ["orders"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success(`Pedido #${order.id} marcado como pronto`);
+    },
+    onError: async (error, id) => {
+      clearSuppressedRealtimeToast(id, "pickup");
+      await queryClient.invalidateQueries({ queryKey: ["orders"] });
+      toast.error(actionError(error, "Não foi possível marcar o pedido como pronto."), {
+        duration: Infinity,
+      });
+    },
+  });
   const paymentMutation = useMutation({
     mutationFn: ({ id, method }: { id: number; method: ApiPaymentMethod }) =>
       markOrderPaid(id, method),
@@ -172,7 +252,12 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
       observation,
     }: {
       order: ApiOrder;
-      items: { productId: number; quantity: number; selectedVariantId?: number }[];
+      items: {
+        productId: number;
+        quantity: number;
+        selectedVariantId?: number;
+        selectedVariantIds?: number[];
+      }[];
       clienteCpf: string;
       observation?: string;
     }) => {
@@ -229,19 +314,57 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
   const subtitle =
     mode === "active"
       ? `${activeCount} pedido(s) ativo(s)`
-      : `${orders.length} pedido(s) no total · ${closedCount} encerrado(s)`;
+      : `${orders.length}${totalAvailableOrders > orders.length ? ` de ${totalAvailableOrders}` : ""} pedido(s) carregado(s) · ${closedCount} encerrado(s)${hasOrderSearch ? ` · ${visibleOrders.length} resultado(s)` : ""}`;
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-12 h-12 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-elegant">
-          <ClipboardList className="w-6 h-6 text-primary-foreground" />
+      <div className="flex flex-col gap-4 mb-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-elegant">
+            <ClipboardList className="w-6 h-6 text-primary-foreground" />
+          </div>
+          <div>
+            <h2 className="text-2xl md:text-3xl font-black">{title}</h2>
+            <p className="text-muted-foreground">{subtitle}</p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-2xl md:text-3xl font-black">{title}</h2>
-          <p className="text-muted-foreground">{subtitle}</p>
-        </div>
+        {mode === "all" && (
+          <button
+            type="button"
+            onClick={() => exportMutation.mutate()}
+            disabled={ordersQuery.isLoading || orders.length === 0 || exportMutation.isPending}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm font-bold shadow-card transition-colors hover:border-primary/40 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            {exportMutation.isPending ? "Exportando..." : "Exportar planilha"}
+          </button>
+        )}
       </div>
+
+      {mode === "all" && (
+        <div className="mb-6 max-w-xl">
+          <label className="relative block">
+            <span className="sr-only">Buscar pedidos por nome ou CPF</span>
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={orderSearch}
+              onChange={(event) => setOrderSearch(event.target.value)}
+              placeholder="Buscar por nome ou CPF"
+              className="input h-12 pl-12 pr-12 font-semibold"
+            />
+            {orderSearch && (
+              <button
+                type="button"
+                onClick={() => setOrderSearch("")}
+                aria-label="Limpar busca"
+                className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <XCircle className="h-4 w-4" />
+              </button>
+            )}
+          </label>
+        </div>
+      )}
 
       {ordersQuery.isLoading ? (
         <div className="bg-card rounded-3xl border p-16 text-center text-muted-foreground">
@@ -255,27 +378,45 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
         <div className="bg-card rounded-3xl border p-16 text-center">
           <ClipboardList className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
           <p className="text-xl font-bold mb-1">
-            {mode === "active" ? "Nenhum pedido ativo" : "Nenhum pedido ainda"}
+            {hasOrderSearch
+              ? "Nenhum pedido encontrado"
+              : mode === "active"
+                ? "Nenhum pedido ativo"
+                : "Nenhum pedido ainda"}
           </p>
           <p className="text-muted-foreground">
-            {mode === "active"
-              ? "Pedidos finalizados e cancelados ficam na aba Todos os Pedidos."
-              : "Crie um pedido na aba de realização para visualizá-lo aqui."}
+            {hasOrderSearch
+              ? "Tente buscar por outro nome ou CPF."
+              : mode === "active"
+                ? "Pedidos finalizados e cancelados ficam na aba Todos os Pedidos."
+                : "Crie um pedido na aba de realização para visualizá-lo aqui."}
           </p>
         </div>
       ) : (
         <div className="grid lg:grid-cols-[360px_1fr] gap-6">
-          <div className="space-y-3 lg:max-h-[calc(100vh-260px)] lg:overflow-y-auto pr-1">
-            <AnimatePresence initial={false}>
-              {visibleOrders.map((order) => (
-                <OrderListButton
-                  key={order.id}
-                  order={order}
-                  selected={order.id === selectedId}
-                  onClick={() => setSelectedId(order.id)}
-                />
-              ))}
-            </AnimatePresence>
+          <div className="space-y-3">
+            <div className="space-y-3 lg:max-h-[calc(100vh-330px)] lg:overflow-y-auto pr-1">
+              <AnimatePresence initial={false}>
+                {paginatedOrders.map((order) => (
+                  <OrderListButton
+                    key={order.id}
+                    order={order}
+                    selected={order.id === selectedId}
+                    showOrderDateTime={mode === "all"}
+                    onClick={() => setSelectedId(order.id)}
+                  />
+                ))}
+              </AnimatePresence>
+            </div>
+            {listPageCount > 1 && (
+              <OrderListPagination
+                currentPage={currentListPage}
+                pageCount={listPageCount}
+                totalItems={visibleOrders.length}
+                onPrevious={() => setListPage((current) => Math.max(0, current - 1))}
+                onNext={() => setListPage((current) => Math.min(listPageCount - 1, current + 1))}
+              />
+            )}
           </div>
 
           {visibleSelected && (
@@ -290,7 +431,10 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
                   <p className="text-muted-foreground text-sm font-semibold">Pedido</p>
                   <h2 className="text-4xl font-black">#{visibleSelected.id}</h2>
                   <p className="text-muted-foreground mt-1">
-                    {visibleSelected.client.name} · {formatTime(visibleSelected.orderTime)}
+                    {visibleSelected.client.name} ·{" "}
+                    {mode === "all"
+                      ? formatDateTime(visibleSelected.orderTime)
+                      : formatTime(visibleSelected.orderTime)}
                   </p>
                 </div>
                 <div className="text-right">
@@ -309,25 +453,31 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
               </div>
 
               <div className="space-y-2 mb-6">
-                {visibleSelected.items.map((item) => (
-                  <div
-                    key={`${item.productId}-${item.selectedVariantId ?? "base"}`}
-                    className="flex items-center gap-3 p-4 bg-muted/40 rounded-xl"
-                  >
-                    <div className="w-10 h-10 rounded-lg bg-card flex items-center justify-center shadow-sm">
-                      <ChefHat className="w-5 h-5 text-primary" />
+                {visibleSelected.items.map((item, index) => {
+                  const variantNames = selectedVariantNamesForItem(item);
+                  const variantKey = selectedVariantIdsForItem(item).join("-") || "base";
+                  return (
+                    <div
+                      key={`${item.productId}-${variantKey}-${index}`}
+                      className="flex items-center gap-3 p-4 bg-muted/40 rounded-xl"
+                    >
+                      <div className="w-10 h-10 rounded-lg bg-card flex items-center justify-center shadow-sm">
+                        <ChefHat className="w-5 h-5 text-primary" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-bold">{item.productName}</p>
+                        {variantNames.length > 0 && (
+                          <p className="text-xs font-bold text-primary">
+                            {variantNames.join(", ")}
+                          </p>
+                        )}
+                      </div>
+                      <span className="bg-primary/10 text-primary font-black px-3 py-1 rounded-lg">
+                        x{item.quantity}
+                      </span>
                     </div>
-                    <div className="flex-1">
-                      <p className="font-bold">{item.productName}</p>
-                      {item.selectedVariantName && (
-                        <p className="text-xs font-bold text-primary">{item.selectedVariantName}</p>
-                      )}
-                    </div>
-                    <span className="bg-primary/10 text-primary font-black px-3 py-1 rounded-lg">
-                      x{item.quantity}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               {visibleSelected.observation && (
                 <div className="mb-6 rounded-xl border border-status-preparing/30 bg-status-preparing/10 p-4">
@@ -349,10 +499,12 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
                   }}
                   onPay={() => {
                     setActionsOpen(false);
-                    setPaymentMethod(
-                      visibleSelected.paymentMethod === "DINHEIRO" ? "DINHEIRO" : "PIX",
-                    );
+                    setPaymentMethod(visibleSelected.paymentMethod ?? "PIX");
                     setConfirmPayment(true);
+                  }}
+                  onReady={() => {
+                    setActionsOpen(false);
+                    readyMutation.mutate(visibleSelected.id);
                   }}
                   onFinish={() => {
                     setActionsOpen(false);
@@ -396,13 +548,11 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
               onClick={(event) => event.stopPropagation()}
               className="bg-card rounded-3xl shadow-elegant max-w-sm w-full p-6"
             >
-              <h3 className="text-xl font-black mb-2">
-                Confirmar pagamento #{visibleSelected.id}
-              </h3>
+              <h3 className="text-xl font-black mb-2">Confirmar pagamento #{visibleSelected.id}</h3>
               <p className="text-muted-foreground text-sm mb-5">
                 Informe a forma recebida para registrar {formatBRL(visibleSelected.totalValue)}.
               </p>
-              <div className="grid grid-cols-2 gap-3 mb-5">
+              <div className="grid grid-cols-3 gap-3 mb-5">
                 <PaymentMethodButton
                   method="PIX"
                   selected={paymentMethod === "PIX"}
@@ -411,6 +561,11 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
                 <PaymentMethodButton
                   method="DINHEIRO"
                   selected={paymentMethod === "DINHEIRO"}
+                  onSelect={setPaymentMethod}
+                />
+                <PaymentMethodButton
+                  method="CARTAO"
+                  selected={paymentMethod === "CARTAO"}
                   onSelect={setPaymentMethod}
                 />
               </div>
@@ -450,9 +605,7 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
               className="bg-card rounded-3xl shadow-elegant max-w-sm p-6 text-center"
             >
               <CheckCircle2 className="w-14 h-14 mx-auto mb-4 text-status-finished" />
-              <h3 className="text-xl font-black mb-2">
-                Finalizar pedido #{visibleSelected.id}?
-              </h3>
+              <h3 className="text-xl font-black mb-2">Finalizar pedido #{visibleSelected.id}?</h3>
               <p className="text-muted-foreground text-sm mb-5">
                 {visibleSelected.paymentStatus === "PENDING"
                   ? "O pedido será retirado e continuará com pagamento pendente nos resultados."
@@ -492,9 +645,7 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
               className="bg-card rounded-3xl shadow-elegant max-w-md p-6 text-center"
             >
               <XCircle className="w-14 h-14 mx-auto mb-4 text-destructive" />
-              <h3 className="text-xl font-black mb-2">
-                Cancelar pedido #{visibleSelected.id}?
-              </h3>
+              <h3 className="text-xl font-black mb-2">Cancelar pedido #{visibleSelected.id}?</h3>
               <p className="text-muted-foreground text-sm mb-3">
                 O pedido será retirado da operação e suas unidades voltarão ao estoque.
               </p>
@@ -527,6 +678,7 @@ function OrderActionMenu({
   onToggle,
   onEdit,
   onPay,
+  onReady,
   onFinish,
   onCancel,
 }: {
@@ -535,12 +687,14 @@ function OrderActionMenu({
   onToggle: () => void;
   onEdit: () => void;
   onPay: () => void;
+  onReady: () => void;
   onFinish: () => void;
   onCancel: () => void;
 }) {
   const active = order.status === "PENDING" || order.status === "READY_FOR_PICKUP";
   const canEdit = active && order.paymentStatus !== "PAID";
   const canPay = order.paymentStatus === "PENDING" && order.status !== "CANCELLED";
+  const canReady = order.status === "PENDING";
   const canFinish = order.status === "READY_FOR_PICKUP";
   const canCancel = active && order.paymentStatus !== "PAID";
 
@@ -585,6 +739,13 @@ function OrderActionMenu({
                 detail={canPay ? "Registrar recebimento" : "Pagamento indisponível"}
                 enabled={canPay}
                 onClick={onPay}
+              />
+              <ActionButton
+                Icon={PackageCheck}
+                title="Marcar pronto"
+                detail={canReady ? "Enviar para retirada" : "Apenas em preparo"}
+                enabled={canReady}
+                onClick={onReady}
               />
               <ActionButton
                 Icon={CheckCircle2}
@@ -657,7 +818,9 @@ type EditableOrderLine = {
   productId: number;
   quantity: number;
   selectedVariantId?: number;
+  selectedVariantIds: number[];
   selectedVariantName?: string | null;
+  selectedVariantNames: string[];
 };
 
 function EditOrderModal({
@@ -670,7 +833,12 @@ function EditOrderModal({
   pending: boolean;
   onClose: () => void;
   onSubmit: (
-    items: { productId: number; quantity: number; selectedVariantId?: number }[],
+    items: {
+      productId: number;
+      quantity: number;
+      selectedVariantId?: number;
+      selectedVariantIds?: number[];
+    }[],
     clienteCpf: string,
     observation?: string,
   ) => void;
@@ -679,13 +847,16 @@ function EditOrderModal({
   const [search, setSearch] = useState("");
   const [observation, setObservation] = useState(order.observation ?? "");
   const [choosingVariantFor, setChoosingVariantFor] = useState<number | null>(null);
+  const [variantDrafts, setVariantDrafts] = useState<Record<number, number[]>>({});
   const [lines, setLines] = useState<EditableOrderLine[]>(
     order.items.map((item, index) => ({
       key: `current-${index}`,
       productId: item.productId,
       quantity: item.quantity,
       selectedVariantId: item.selectedVariantId ?? undefined,
+      selectedVariantIds: selectedVariantIdsForItem(item),
       selectedVariantName: item.selectedVariantName,
+      selectedVariantNames: selectedVariantNamesForItem(item),
     })),
   );
   const productsQuery = useQuery({
@@ -707,19 +878,16 @@ function EditOrderModal({
               price: item.unitPrice,
               icon: "GENERAL" as const,
               stockQuantity: 0,
-              hasVariants: item.selectedVariantId !== null,
-              variantType: item.selectedVariantId !== null ? "Opção" : null,
-              variantSelectionRequired: item.selectedVariantId !== null,
-              variants:
-                item.selectedVariantId !== null
-                  ? [
-                      {
-                        id: item.selectedVariantId,
-                        name: item.selectedVariantName ?? "Opção selecionada",
-                        available: true,
-                      },
-                    ]
-                  : [],
+              hasVariants: selectedVariantIdsForItem(item).length > 0,
+              variantType: selectedVariantIdsForItem(item).length > 0 ? "Opção" : null,
+              variantSelectionRequired: selectedVariantIdsForItem(item).length > 0,
+              variantSelectionMode:
+                selectedVariantIdsForItem(item).length > 1 ? "MULTIPLE" : "SINGLE",
+              variants: selectedVariantIdsForItem(item).map((variantId, variantIndex) => ({
+                id: variantId,
+                name: selectedVariantNamesForItem(item)[variantIndex] ?? "Opção selecionada",
+                available: true,
+              })),
             },
           ]),
       ).values(),
@@ -741,6 +909,7 @@ function EditOrderModal({
       productId: line.productId,
       quantity: line.quantity,
       selectedVariantId: line.selectedVariantId,
+      selectedVariantIds: line.selectedVariantIds,
     }));
   const projectedTotal = requestedItems.reduce((total, item) => {
     const product = products.find((entry) => entry.id === item.productId);
@@ -749,7 +918,11 @@ function EditOrderModal({
   const cpfIsValid = isValidCPF(cpf);
   const variantsAreValid = requestedItems.every((item) => {
     const product = products.find((entry) => entry.id === item.productId);
-    return !product?.hasVariants || !product.variantSelectionRequired || item.selectedVariantId;
+    return (
+      !product?.hasVariants ||
+      !product.variantSelectionRequired ||
+      item.selectedVariantIds.length > 0
+    );
   });
 
   function adjustQuantity(line: EditableOrderLine, product: ApiProduct, difference: number) {
@@ -765,33 +938,57 @@ function EditOrderModal({
     );
   }
 
-  function addLine(product: ApiProduct, selectedVariantId?: number) {
+  function addLine(product: ApiProduct, selectedVariantIds: number[] = []) {
     const maxQuantity = product.stockQuantity + initialQuantity(product.id);
     if (requestedQuantity(product.id) >= maxQuantity) return;
-    const selectedVariant = product.variants.find((variant) => variant.id === selectedVariantId);
+    const normalizedIds =
+      product.variantSelectionMode === "MULTIPLE"
+        ? selectedVariantIds
+        : selectedVariantIds.slice(0, 1);
+    const selectedVariants = normalizedIds
+      .map((variantId) => product.variants.find((variant) => variant.id === variantId))
+      .filter((variant): variant is ApiProduct["variants"][number] => Boolean(variant));
     setLines((current) => [
       ...current,
       {
-        key: `new-${product.id}-${selectedVariantId ?? "base"}-${current.length}`,
+        key: `new-${product.id}-${normalizedIds.join("-") || "base"}-${current.length}`,
         productId: product.id,
         quantity: 1,
-        selectedVariantId,
-        selectedVariantName: selectedVariant?.name,
+        selectedVariantId: normalizedIds[0],
+        selectedVariantIds: normalizedIds,
+        selectedVariantName: selectedVariants[0]?.name,
+        selectedVariantNames: selectedVariants.map((variant) => variant.name),
       },
     ]);
     setChoosingVariantFor(null);
+    setVariantDrafts((current) => {
+      const next = { ...current };
+      delete next[product.id];
+      return next;
+    });
   }
 
   function selectLineVariant(line: EditableOrderLine, selectedVariantId?: number) {
+    selectLineVariants(line, selectedVariantId ? [selectedVariantId] : []);
+  }
+
+  function selectLineVariants(line: EditableOrderLine, selectedVariantIds: number[]) {
     const product = products.find((entry) => entry.id === line.productId);
-    const selectedVariant = product?.variants.find((variant) => variant.id === selectedVariantId);
+    const normalizedIds =
+      product?.variantSelectionMode === "MULTIPLE"
+        ? selectedVariantIds
+        : selectedVariantIds.slice(0, 1);
+    const selectedVariants =
+      product?.variants.filter((variant) => normalizedIds.includes(variant.id)) ?? [];
     setLines((current) =>
       current.map((entry) =>
         entry.key === line.key
           ? {
               ...entry,
-              selectedVariantId,
-              selectedVariantName: selectedVariant?.name,
+              selectedVariantId: normalizedIds[0],
+              selectedVariantIds: normalizedIds,
+              selectedVariantName: selectedVariants[0]?.name,
+              selectedVariantNames: selectedVariants.map((variant) => variant.name),
             }
           : entry,
       ),
@@ -890,33 +1087,68 @@ function EditOrderModal({
                   <div className="min-w-0">
                     <p className="font-bold truncate">{product.name}</p>
                     <p className="text-xs text-muted-foreground">{formatBRL(product.price)}</p>
-                    {product.hasVariants && (
-                      <select
-                        value={line.selectedVariantId ?? ""}
-                        onChange={(event) =>
-                          selectLineVariant(
-                            line,
-                            event.target.value === "" ? undefined : Number(event.target.value),
-                          )
-                        }
-                        className="mt-2 h-10 rounded-lg border bg-card px-2 text-xs font-bold"
-                      >
-                        {!product.variantSelectionRequired && (
-                          <option value="">Sem {product.variantType?.toLowerCase()}</option>
-                        )}
-                        {product.variantSelectionRequired && <option value="">Selecione...</option>}
-                        {product.variants.map((variant) => (
-                          <option
-                            key={variant.id}
-                            value={variant.id}
-                            disabled={!variant.available && line.selectedVariantId !== variant.id}
-                          >
-                            {variant.name}
-                            {!variant.available ? " (indisponível)" : ""}
-                          </option>
-                        ))}
-                      </select>
-                    )}
+                    {product.hasVariants &&
+                      (product.variantSelectionMode === "MULTIPLE" ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {product.variants.map((variant) => {
+                            const checked = line.selectedVariantIds.includes(variant.id);
+                            return (
+                              <label
+                                key={variant.id}
+                                className={`rounded-lg border px-2.5 py-2 text-xs font-bold ${
+                                  checked ? "border-primary bg-primary/10 text-primary" : "bg-card"
+                                } ${!variant.available && !checked ? "opacity-45" : ""}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={!variant.available && !checked}
+                                  onChange={(event) =>
+                                    selectLineVariants(
+                                      line,
+                                      event.target.checked
+                                        ? [...line.selectedVariantIds, variant.id]
+                                        : line.selectedVariantIds.filter(
+                                            (variantId) => variantId !== variant.id,
+                                          ),
+                                    )
+                                  }
+                                  className="mr-2 size-3 accent-primary"
+                                />
+                                {variant.name}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <select
+                          value={line.selectedVariantId ?? ""}
+                          onChange={(event) =>
+                            selectLineVariant(
+                              line,
+                              event.target.value === "" ? undefined : Number(event.target.value),
+                            )
+                          }
+                          className="mt-2 h-10 rounded-lg border bg-card px-2 text-xs font-bold"
+                        >
+                          {!product.variantSelectionRequired && (
+                            <option value="">Sem {product.variantType?.toLowerCase()}</option>
+                          )}
+                          {product.variantSelectionRequired && (
+                            <option value="">Selecione...</option>
+                          )}
+                          {product.variants.map((variant) => (
+                            <option
+                              key={variant.id}
+                              value={variant.id}
+                              disabled={!variant.available && line.selectedVariantId !== variant.id}
+                            >
+                              {variant.name}
+                              {!variant.available ? " (indisponível)" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      ))}
                   </div>
                   <div className="rounded-lg bg-muted flex items-center p-1 gap-2">
                     <button
@@ -934,8 +1166,11 @@ function EditOrderModal({
                         requestedQuantity(product.id) >=
                           product.stockQuantity + initialQuantity(product.id) ||
                         (product.hasVariants &&
-                          product.variants.find((variant) => variant.id === line.selectedVariantId)
-                            ?.available === false)
+                          line.selectedVariantIds.some(
+                            (variantId) =>
+                              product.variants.find((variant) => variant.id === variantId)
+                                ?.available === false,
+                          ))
                       }
                       onClick={() => adjustQuantity(line, product, 1)}
                       aria-label={`Adicionar uma unidade de ${product.name}`}
@@ -996,28 +1231,81 @@ function EditOrderModal({
                     </button>
                   </div>
                   {choosingVariantFor === product.id && (
-                    <div className="flex flex-wrap gap-2 rounded-lg bg-muted p-2">
-                      {!product.variantSelectionRequired && (
-                        <button
-                          type="button"
-                          onClick={() => addLine(product)}
-                          className="rounded-lg bg-card border px-3 py-2 text-xs font-bold"
-                        >
-                          Sem {product.variantType?.toLowerCase()}
-                        </button>
-                      )}
-                      {product.variants
-                        .filter((variant) => variant.available)
-                        .map((variant) => (
+                    <div className="rounded-lg bg-muted p-2">
+                      {product.variantSelectionMode === "MULTIPLE" ? (
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap gap-2">
+                            {product.variants
+                              .filter((variant) => variant.available)
+                              .map((variant) => {
+                                const selectedIds = variantDrafts[product.id] ?? [];
+                                const checked = selectedIds.includes(variant.id);
+                                return (
+                                  <label
+                                    key={variant.id}
+                                    className={`rounded-lg border px-3 py-2 text-xs font-bold ${
+                                      checked
+                                        ? "border-primary bg-primary/10 text-primary"
+                                        : "bg-card"
+                                    }`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={(event) =>
+                                        setVariantDrafts((current) => ({
+                                          ...current,
+                                          [product.id]: event.target.checked
+                                            ? [...selectedIds, variant.id]
+                                            : selectedIds.filter(
+                                                (variantId) => variantId !== variant.id,
+                                              ),
+                                        }))
+                                      }
+                                      className="mr-2 size-3 accent-primary"
+                                    />
+                                    {variant.name}
+                                  </label>
+                                );
+                              })}
+                          </div>
                           <button
-                            key={variant.id}
                             type="button"
-                            onClick={() => addLine(product, variant.id)}
-                            className="rounded-lg bg-card border px-3 py-2 text-xs font-bold"
+                            disabled={
+                              product.variantSelectionRequired &&
+                              (variantDrafts[product.id] ?? []).length === 0
+                            }
+                            onClick={() => addLine(product, variantDrafts[product.id] ?? [])}
+                            className="rounded-lg bg-primary px-3 py-2 text-xs font-black text-primary-foreground disabled:opacity-40"
                           >
-                            {variant.name}
+                            Adicionar combinação
                           </button>
-                        ))}
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {!product.variantSelectionRequired && (
+                            <button
+                              type="button"
+                              onClick={() => addLine(product)}
+                              className="rounded-lg bg-card border px-3 py-2 text-xs font-bold"
+                            >
+                              Sem {product.variantType?.toLowerCase()}
+                            </button>
+                          )}
+                          {product.variants
+                            .filter((variant) => variant.available)
+                            .map((variant) => (
+                              <button
+                                key={variant.id}
+                                type="button"
+                                onClick={() => addLine(product, [variant.id])}
+                                className="rounded-lg bg-card border px-3 py-2 text-xs font-bold"
+                              >
+                                {variant.name}
+                              </button>
+                            ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1072,7 +1360,7 @@ function PaymentMethodButton({
   selected: boolean;
   onSelect: (method: ApiPaymentMethod) => void;
 }) {
-  const Icon = method === "PIX" ? QrCode : Banknote;
+  const Icon = method === "PIX" ? QrCode : method === "CARTAO" ? CreditCard : Banknote;
   return (
     <button
       onClick={() => onSelect(method)}
@@ -1086,15 +1374,18 @@ function PaymentMethodButton({
 function OrderListButton({
   order,
   selected,
+  showOrderDateTime = false,
   onClick,
 }: {
   order: ApiOrder;
   selected: boolean;
+  showOrderDateTime?: boolean;
   onClick: () => void;
 }) {
   const config = statusConfig[order.status];
   const Icon = config.Icon;
   const elapsedText = orderElapsedText(order);
+  const timeText = showOrderDateTime ? formatDateTime(order.orderTime) : elapsedText;
   return (
     <motion.button
       layout
@@ -1114,9 +1405,9 @@ function OrderListButton({
       </div>
       <p className="font-semibold text-sm truncate">{order.client.name}</p>
       <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
-        {elapsedText && (
+        {timeText && (
           <span className="inline-flex items-center gap-1">
-            <Clock className="w-3 h-3" /> {elapsedText}
+            <Clock className="w-3 h-3" /> {timeText}
           </span>
         )}
         <span className="ml-auto">
@@ -1126,6 +1417,72 @@ function OrderListButton({
       </div>
     </motion.button>
   );
+}
+
+function OrderListPagination({
+  currentPage,
+  pageCount,
+  totalItems,
+  onPrevious,
+  onNext,
+}: {
+  currentPage: number;
+  pageCount: number;
+  totalItems: number;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border bg-card px-3 py-3 shadow-card">
+      <p className="mb-3 text-center text-xs font-bold text-muted-foreground">
+        Página {currentPage + 1} de {pageCount} · {totalItems} pedido(s)
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={onPrevious}
+          disabled={currentPage === 0}
+          className="rounded-xl border px-3 py-2 text-sm font-bold transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Anterior
+        </button>
+        <button
+          type="button"
+          onClick={onNext}
+          disabled={currentPage >= pageCount - 1}
+          className="rounded-xl border px-3 py-2 text-sm font-bold transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Próxima
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function matchesOrderSearch(order: ApiOrder, normalizedQuery: string, digitQuery: string) {
+  if (!normalizedQuery && !digitQuery) return true;
+
+  const clientName = normalizeSearchText(order.client.name);
+  const clientCpf = order.client.cpf.replace(/\D/g, "");
+
+  return (
+    (normalizedQuery.length > 0 && clientName.includes(normalizedQuery)) ||
+    (digitQuery.length > 0 && clientCpf.includes(digitQuery))
+  );
+}
+
+function selectedVariantIdsForItem(item: ApiOrder["items"][number]) {
+  if (item.selectedVariantIds && item.selectedVariantIds.length > 0) {
+    return item.selectedVariantIds;
+  }
+  return item.selectedVariantId ? [item.selectedVariantId] : [];
+}
+
+function selectedVariantNamesForItem(item: ApiOrder["items"][number]) {
+  if (item.selectedVariantNames && item.selectedVariantNames.length > 0) {
+    return item.selectedVariantNames;
+  }
+  return item.selectedVariantName ? [item.selectedVariantName] : [];
 }
 
 function isActiveOrder(order: ApiOrder) {
@@ -1175,13 +1532,107 @@ function paymentLabel(paymentMethod: ApiPaymentMethod | null) {
     ? "PIX"
     : paymentMethod === "DINHEIRO"
       ? "Dinheiro"
-      : "Não informado";
+      : paymentMethod === "CARTAO"
+        ? "Cartão"
+        : "Não informado";
 }
 
 function paymentStatusLabel(order: ApiOrder) {
   if (order.paymentStatus === "CANCELLED") return "Pagamento cancelado";
   if (order.paymentStatus === "PENDING") return `Pendente - ${paymentLabel(order.paymentMethod)}`;
   return `Pago - ${paymentLabel(order.paymentMethod)}`;
+}
+
+async function fetchAllOrdersForExport() {
+  const pageSize = 1000;
+  const firstPage = await getOrders({ page: 0, size: pageSize, sort: "orderTime,desc" });
+  if (firstPage.totalPages <= 1) return firstPage.content;
+
+  const remainingPages = await Promise.all(
+    Array.from({ length: firstPage.totalPages - 1 }, (_, index) =>
+      getOrders({ page: index + 1, size: pageSize, sort: "orderTime,desc" }),
+    ),
+  );
+  return [firstPage, ...remainingPages].flatMap((page) => page.content);
+}
+
+function exportOrdersCsv(orders: ApiOrder[]) {
+  if (typeof window === "undefined" || orders.length === 0) return;
+
+  const rows = [
+    [
+      "Pedido",
+      "Data do pedido",
+      "Cliente",
+      "CPF",
+      "Equipe",
+      "Telefone",
+      "Status do pedido",
+      "Status do pagamento",
+      "Forma de pagamento",
+      "Itens",
+      "Quantidade total",
+      "Observacao",
+      "Total",
+      "Pago em",
+      "Pronto em",
+      "Finalizado em",
+      "Cancelado em",
+    ],
+    ...orders.map((order) => [
+      `#${order.id}`,
+      formatCsvDateTime(order.orderTime),
+      order.client.name,
+      formatCPF(order.client.cpf),
+      order.client.team || "Nao informada",
+      order.client.phoneNumber ? formatPhone(order.client.phoneNumber) : "Nao informado",
+      statusConfig[order.status].label,
+      paymentStatusText(order.paymentStatus),
+      paymentLabel(order.paymentMethod),
+      order.items.map(formatOrderItemForCsv).join(" | "),
+      String(order.items.reduce((sum, item) => sum + item.quantity, 0)),
+      order.observation ?? "",
+      order.totalValue.toLocaleString("pt-BR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+      formatCsvDateTime(order.paidAt),
+      formatCsvDateTime(order.readyAt),
+      formatCsvDateTime(order.finishedAt),
+      formatCsvDateTime(order.cancelledAt),
+    ]),
+  ];
+  const csv = rows.map((row) => row.map(escapeCsvCell).join(";")).join("\n");
+  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+
+  link.href = url;
+  link.download = `todos-os-pedidos-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function formatOrderItemForCsv(item: ApiOrder["items"][number]) {
+  const variants = selectedVariantNamesForItem(item);
+  const variantText = variants.length > 0 ? ` (${variants.join(", ")})` : "";
+  return `${item.productName}${variantText} x${item.quantity}`;
+}
+
+function formatCsvDateTime(value: string | null) {
+  return value ? formatDateTime(value) : "";
+}
+
+function paymentStatusText(status: ApiOrder["paymentStatus"]) {
+  if (status === "PAID") return "Pago";
+  if (status === "CANCELLED") return "Cancelado";
+  return "Pendente";
+}
+
+function escapeCsvCell(value: string) {
+  return `"${value.replace(/"/g, '""')}"`;
 }
 
 function actionError(error: unknown, fallback: string) {

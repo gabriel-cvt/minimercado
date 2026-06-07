@@ -12,6 +12,7 @@ import {
   X,
   CreditCard,
   Banknote,
+  Clock,
   Sparkles,
 } from "lucide-react";
 import {
@@ -21,6 +22,7 @@ import {
   getClientByCpf,
   getProducts,
   markOrderPaid,
+  searchClients,
   type ApiClient,
   type ApiOrder,
   type ApiPaymentMethod,
@@ -35,7 +37,7 @@ type Step = "cpf" | "register" | "products" | "success";
 type CartLine = {
   key: string;
   product: ApiProduct;
-  selectedVariant?: ApiProductVariant;
+  selectedVariants: ApiProductVariant[];
   qty: number;
 };
 
@@ -44,6 +46,7 @@ type PaymentChoice = ApiPaymentMethod | "PENDING";
 type StoredCartLine = {
   productId: number;
   selectedVariantId?: number;
+  selectedVariantIds?: number[];
   qty: number;
 };
 type StoredOrderDraft = {
@@ -112,7 +115,10 @@ function readOrderDraft(): StoredOrderDraft | null {
       team: typeof draft.team === "string" ? draft.team : "",
       search: typeof draft.search === "string" ? draft.search : "",
       payment:
-        draft.payment === "PIX" || draft.payment === "DINHEIRO" || draft.payment === "PENDING"
+        draft.payment === "PIX" ||
+        draft.payment === "DINHEIRO" ||
+        draft.payment === "CARTAO" ||
+        draft.payment === "PENDING"
           ? draft.payment
           : null,
       observation: typeof draft.observation === "string" ? draft.observation : "",
@@ -131,6 +137,11 @@ function readOrderDraft(): StoredOrderDraft | null {
                 productId: Number(value.productId),
                 selectedVariantId: Number.isInteger(value.selectedVariantId)
                   ? Number(value.selectedVariantId)
+                  : undefined,
+                selectedVariantIds: Array.isArray(value.selectedVariantIds)
+                  ? value.selectedVariantIds
+                      .filter((variantId) => Number.isInteger(variantId))
+                      .map(Number)
                   : undefined,
                 qty: Number(value.qty),
               },
@@ -188,7 +199,18 @@ export function OrdersFlow() {
     queryKey: ["products", "available"],
     queryFn: () => getProducts({ inStock: true }),
   });
+  const clientSearchTerm = cpf.trim();
+  const clientSearchDigits = onlyDigits(clientSearchTerm);
+  const clientSearchEnabled =
+    step === "cpf" &&
+    (clientSearchTerm.length >= 2 || clientSearchDigits.length >= 3);
+  const clientsQuery = useQuery({
+    queryKey: ["clients", "search", clientSearchTerm],
+    queryFn: () => searchClients({ query: clientSearchTerm, size: 8 }),
+    enabled: clientSearchEnabled,
+  });
   const products = useMemo(() => productsQuery.data?.content ?? [], [productsQuery.data?.content]);
+  const clientSuggestions = clientsQuery.data?.content ?? [];
 
   useEffect(() => {
     const draft = readOrderDraft();
@@ -215,18 +237,26 @@ export function OrdersFlow() {
       const product = productsQuery.data.content.find((item) => item.id === storedLine.productId);
       if (!product || product.stockQuantity < 1) return [];
 
-      const selectedVariant = storedLine.selectedVariantId
-        ? product.variants.find(
-            (variant) => variant.id === storedLine.selectedVariantId && variant.available,
-          )
-        : undefined;
-      if (product.variantSelectionRequired && !selectedVariant) return [];
+      const storedVariantIds =
+        storedLine.selectedVariantIds && storedLine.selectedVariantIds.length > 0
+          ? storedLine.selectedVariantIds
+          : storedLine.selectedVariantId
+            ? [storedLine.selectedVariantId]
+            : [];
+      const selectedVariants = storedVariantIds
+        .map((variantId) =>
+          product.variants.find((variant) => variant.id === variantId && variant.available),
+        )
+        .filter((variant): variant is ApiProductVariant => Boolean(variant));
+      const normalizedVariants =
+        product.variantSelectionMode === "MULTIPLE" ? selectedVariants : selectedVariants.slice(0, 1);
+      if (product.variantSelectionRequired && normalizedVariants.length === 0) return [];
 
       return [
         {
-          key: `${product.id}:${selectedVariant?.id ?? "base"}`,
+          key: lineKey(product, normalizedVariants),
           product,
-          selectedVariant,
+          selectedVariants: normalizedVariants,
           qty: Math.min(storedLine.qty, product.stockQuantity),
         },
       ];
@@ -274,7 +304,8 @@ export function OrdersFlow() {
         cartToRestore ??
         cart.map((line) => ({
           productId: line.product.id,
-          selectedVariantId: line.selectedVariant?.id,
+          selectedVariantId: line.selectedVariants[0]?.id,
+          selectedVariantIds: line.selectedVariants.map((variant) => variant.id),
           qty: line.qty,
         })),
       currentCustomer,
@@ -297,16 +328,23 @@ export function OrdersFlow() {
   const total = cart.reduce((sum, line) => sum + line.product.price * line.qty, 0);
   const totalCount = cart.reduce((sum, line) => sum + line.qty, 0);
 
-  const lineKey = (product: ApiProduct, variant?: ApiProductVariant) =>
-    `${product.id}:${variant?.id ?? "base"}`;
+  const lineKey = (product: ApiProduct, variants: ApiProductVariant[] = []) => {
+    const variantKey = variants
+      .map((variant) => variant.id)
+      .sort((first, second) => first - second)
+      .join("-");
+    return `${product.id}:${variantKey || "base"}`;
+  };
 
   const quantityForProduct = (productId: number) =>
     cart
       .filter((line) => line.product.id === productId)
       .reduce((totalQuantity, line) => totalQuantity + line.qty, 0);
 
-  const addLine = (product: ApiProduct, selectedVariant?: ApiProductVariant) => {
-    const key = lineKey(product, selectedVariant);
+  const addLine = (product: ApiProduct, selectedVariants: ApiProductVariant[] = []) => {
+    const normalizedVariants =
+      product.variantSelectionMode === "MULTIPLE" ? selectedVariants : selectedVariants.slice(0, 1);
+    const key = lineKey(product, normalizedVariants);
     setCart((current) => {
       const productQuantity = current
         .filter((line) => line.product.id === product.id)
@@ -316,7 +354,7 @@ export function OrdersFlow() {
       if (existing) {
         return current.map((line) => (line.key === key ? { ...line, qty: line.qty + 1 } : line));
       }
-      return [...current, { key, product, selectedVariant, qty: 1 }];
+      return [...current, { key, product, selectedVariants: normalizedVariants, qty: 1 }];
     });
   };
 
@@ -338,20 +376,58 @@ export function OrdersFlow() {
     addLine(product);
   };
 
+  const selectExistingCustomer = (customer: ApiClient) => {
+    setCurrentCustomer(customer);
+    setCpf(customer.cpf);
+    setName(customer.name);
+    setPhoneNumber(customer.phoneNumber ?? "");
+    setTeam(customer.team ?? "");
+    setError("");
+    setStep("products");
+  };
+
   const handleCpf = async () => {
     setError("");
-    if (!isValidCPF(cpf)) {
-      setError("Informe um CPF válido com 11 dígitos.");
+    const query = cpf.trim();
+    const digits = onlyDigits(query);
+
+    if (!isCpfLikeQuery(query)) {
+      setSubmitting(true);
+      try {
+        const suggestions =
+          clientSuggestions.length > 0
+            ? clientSuggestions
+            : (await searchClients({ query, size: 8 })).content;
+        const exactMatch = suggestions.find(
+          (client) => client.name.toLowerCase() === query.toLowerCase(),
+        );
+        const selectable = exactMatch ?? (suggestions.length === 1 ? suggestions[0] : null);
+        if (selectable) {
+          selectExistingCustomer(selectable);
+          return;
+        }
+        setError("Selecione um cliente da lista ou informe um CPF para cadastrar.");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Não foi possível buscar o cliente.");
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    if (!isValidCPF(digits)) {
+      setError("Informe um CPF válido com 11 dígitos ou busque pelo nome do cliente.");
       return;
     }
     setSubmitting(true);
     try {
-      const customer = await getClientByCpf(cpf);
-      setCurrentCustomer(customer);
-      setStep("products");
+      const customer = await getClientByCpf(digits);
+      selectExistingCustomer(customer);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 404) setStep("register");
-      else setError(err instanceof Error ? err.message : "Não foi possível buscar o cliente.");
+      if (err instanceof ApiError && err.status === 404) {
+        setCpf(digits);
+        setStep("register");
+      } else setError(err instanceof Error ? err.message : "Não foi possível buscar o cliente.");
     } finally {
       setSubmitting(false);
     }
@@ -396,7 +472,8 @@ export function OrdersFlow() {
         items: cart.map((line) => ({
           productId: line.product.id,
           quantity: line.qty,
-          selectedVariantId: line.selectedVariant?.id,
+          selectedVariantId: line.selectedVariants[0]?.id,
+          selectedVariantIds: line.selectedVariants.map((variant) => variant.id),
         })),
       });
       const order =
@@ -473,19 +550,55 @@ export function OrdersFlow() {
               </p>
               <div className="bg-white rounded-3xl p-6 md:p-8 shadow-elegant text-left max-w-md mx-auto">
                 <label className="text-sm font-semibold text-foreground mb-2 block">
-                  Digite seu CPF
+                  Busque por nome ou CPF
                 </label>
                 <div className="relative">
                   <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                   <input
-                    value={formatCPF(cpf)}
-                    onChange={(e) => setCpf(e.target.value.replace(/\D/g, ""))}
-                    inputMode="numeric"
-                    placeholder="000.000.000-00"
-                    className="w-full pl-12 pr-4 py-4 rounded-xl border-2 border-input bg-background text-foreground text-lg font-mono font-semibold focus:border-primary focus:outline-none transition-colors"
+                    value={isCpfLikeQuery(cpf) ? formatCPF(onlyDigits(cpf)) : cpf}
+                    onChange={(e) => setCpf(normalizeClientSearch(e.target.value))}
+                    inputMode={isCpfLikeQuery(cpf) ? "numeric" : "text"}
+                    placeholder="Nome do cliente ou 000.000.000-00"
+                    className="w-full pl-12 pr-4 py-4 rounded-xl border-2 border-input bg-background text-foreground text-lg font-semibold focus:border-primary focus:outline-none transition-colors"
                     onKeyDown={(e) => e.key === "Enter" && void handleCpf()}
+                    autoComplete="off"
                   />
                 </div>
+                {clientSearchEnabled && (
+                  <div className="mt-3 max-h-64 overflow-y-auto rounded-2xl border bg-background shadow-card">
+                    {clientsQuery.isLoading ? (
+                      <p className="px-4 py-3 text-sm font-semibold text-muted-foreground">
+                        Buscando clientes...
+                      </p>
+                    ) : clientsQuery.isError ? (
+                      <p className="px-4 py-3 text-sm font-semibold text-destructive">
+                        Não foi possível buscar clientes.
+                      </p>
+                    ) : clientSuggestions.length > 0 ? (
+                      clientSuggestions.map((client) => (
+                        <button
+                          key={client.id}
+                          type="button"
+                          onClick={() => selectExistingCustomer(client)}
+                          className="w-full border-b px-4 py-3 text-left last:border-b-0 hover:bg-muted"
+                        >
+                          <span className="block text-sm font-black text-foreground">
+                            {client.name}
+                          </span>
+                          <span className="mt-0.5 block text-xs font-semibold text-muted-foreground">
+                            {formatCPF(client.cpf)}
+                            {client.team ? ` · ${client.team}` : ""}
+                            {client.phoneNumber ? ` · ${formatPhone(client.phoneNumber)}` : ""}
+                          </span>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="px-4 py-3 text-sm font-semibold text-muted-foreground">
+                        Nenhum cliente encontrado.
+                      </p>
+                    )}
+                  </div>
+                )}
                 {error && <p className="text-destructive text-sm mt-2 font-medium">{error}</p>}
                 <button
                   onClick={() => void handleCpf()}
@@ -640,7 +753,8 @@ export function OrdersFlow() {
                       <p className="text-2xl font-black text-primary mb-3">{formatBRL(p.price)}</p>
                       {p.hasVariants && (
                         <p className="text-xs font-semibold text-primary mb-2">
-                          Escolha {p.variantType?.toLowerCase()}
+                          {p.variantSelectionMode === "MULTIPLE" ? "Combine" : "Escolha"}{" "}
+                          {p.variantType?.toLowerCase()}
                           {!p.variantSelectionRequired && " (opcional)"}
                         </p>
                       )}
@@ -772,9 +886,10 @@ export function OrdersFlow() {
                     />
                     <div className="flex-1">
                       <p className="font-bold">{line.product.name}</p>
-                      {line.selectedVariant && (
+                      {line.selectedVariants.length > 0 && (
                         <p className="text-xs font-bold text-primary">
-                          {line.product.variantType}: {line.selectedVariant.name}
+                          {line.product.variantType}:{" "}
+                          {line.selectedVariants.map((variant) => variant.name).join(", ")}
                         </p>
                       )}
                       <p className="text-sm text-muted-foreground">
@@ -808,14 +923,15 @@ export function OrdersFlow() {
                 <div>
                   <p className="text-sm font-semibold mb-2">Forma de pagamento</p>
                   <p className="text-xs text-muted-foreground mb-3">
-                    PIX e Dinheiro serão marcados como pagos agora. Pendente fica para confirmar
-                    depois.
+                    PIX, Dinheiro e Cartão serão marcados como pagos agora. Pendente fica para
+                    confirmar depois.
                   </p>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {[
                       { v: "PIX" as const, label: "PIX", Icon: Sparkles },
                       { v: "DINHEIRO" as const, label: "Dinheiro", Icon: Banknote },
-                      { v: "PENDING" as const, label: "Pendente", Icon: CreditCard },
+                      { v: "CARTAO" as const, label: "Cartão", Icon: CreditCard },
+                      { v: "PENDING" as const, label: "Pendente", Icon: Clock },
                     ].map(({ v, label, Icon }) => (
                       <button
                         key={v}
@@ -842,8 +958,8 @@ export function OrdersFlow() {
           <VariantSelectionModal
             product={variantTarget}
             onClose={() => setVariantTarget(null)}
-            onSelect={(variant) => {
-              addLine(variantTarget, variant);
+            onSelect={(variants) => {
+              addLine(variantTarget, variants);
               setVariantTarget(null);
             }}
           />
@@ -897,9 +1013,15 @@ function VariantSelectionModal({
 }: {
   product: ApiProduct;
   onClose: () => void;
-  onSelect: (variant?: ApiProductVariant) => void;
+  onSelect: (variants: ApiProductVariant[]) => void;
 }) {
   const availableVariants = product.variants.filter((variant) => variant.available);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const isMultiple = product.variantSelectionMode === "MULTIPLE";
+  const selectedVariants = selectedIds
+    .map((variantId) => availableVariants.find((variant) => variant.id === variantId))
+    .filter((variant): variant is ApiProductVariant => Boolean(variant));
+  const canConfirm = !product.variantSelectionRequired || selectedVariants.length > 0;
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -919,7 +1041,7 @@ function VariantSelectionModal({
           <div>
             <h2 className="text-xl font-black">{product.name}</h2>
             <p className="text-sm text-muted-foreground">
-              Selecione {product.variantType?.toLowerCase()}
+              {isMultiple ? "Marque" : "Selecione"} {product.variantType?.toLowerCase()}
               {!product.variantSelectionRequired && " (opcional)"}
             </p>
           </div>
@@ -928,25 +1050,74 @@ function VariantSelectionModal({
           </button>
         </div>
         <div className="space-y-2">
-          {!product.variantSelectionRequired && (
-            <button
-              type="button"
-              onClick={() => onSelect()}
-              className="w-full rounded-xl border p-4 text-left font-bold hover:border-primary hover:bg-primary/5"
-            >
-              Sem escolha
-            </button>
+          {isMultiple ? (
+            <>
+              {availableVariants.map((variant) => {
+                const checked = selectedIds.includes(variant.id);
+                return (
+                  <label
+                    key={variant.id}
+                    className={`flex items-center gap-3 rounded-xl border p-4 text-left font-bold transition-colors ${
+                      checked ? "border-primary bg-primary/10 text-primary" : "hover:border-primary hover:bg-primary/5"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(event) =>
+                        setSelectedIds((current) =>
+                          event.target.checked
+                            ? [...current, variant.id]
+                            : current.filter((variantId) => variantId !== variant.id),
+                        )
+                      }
+                      className="size-4 accent-primary"
+                    />
+                    {variant.name}
+                  </label>
+                );
+              })}
+              {!product.variantSelectionRequired && selectedIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds([])}
+                  className="w-full rounded-xl border p-3 text-sm font-bold text-muted-foreground hover:bg-muted"
+                >
+                  Limpar seleção
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={!canConfirm}
+                onClick={() => onSelect(selectedVariants)}
+                className="mt-3 w-full rounded-xl bg-primary p-4 font-black text-primary-foreground disabled:opacity-40"
+              >
+                Confirmar combinação
+              </button>
+            </>
+          ) : (
+            <>
+              {!product.variantSelectionRequired && (
+                <button
+                  type="button"
+                  onClick={() => onSelect([])}
+                  className="w-full rounded-xl border p-4 text-left font-bold hover:border-primary hover:bg-primary/5"
+                >
+                  Sem escolha
+                </button>
+              )}
+              {availableVariants.map((variant) => (
+                <button
+                  key={variant.id}
+                  type="button"
+                  onClick={() => onSelect([variant])}
+                  className="w-full rounded-xl border p-4 text-left font-bold hover:border-primary hover:bg-primary/5"
+                >
+                  {variant.name}
+                </button>
+              ))}
+            </>
           )}
-          {availableVariants.map((variant) => (
-            <button
-              key={variant.id}
-              type="button"
-              onClick={() => onSelect(variant)}
-              className="w-full rounded-xl border p-4 text-left font-bold hover:border-primary hover:bg-primary/5"
-            >
-              {variant.name}
-            </button>
-          ))}
           {availableVariants.length === 0 && product.variantSelectionRequired && (
             <p className="rounded-xl bg-destructive/10 p-4 text-sm font-semibold text-destructive">
               Nenhuma opção disponível no momento.
@@ -968,11 +1139,32 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 function paymentLabel(p: ApiPaymentMethod | null) {
-  return p === "PIX" ? "PIX" : p === "DINHEIRO" ? "Dinheiro" : "Não informada";
+  return p === "PIX"
+    ? "PIX"
+    : p === "DINHEIRO"
+      ? "Dinheiro"
+      : p === "CARTAO"
+        ? "Cartão"
+        : "Não informada";
 }
 
 function paymentStatusLabel(order: ApiOrder) {
   if (order.paymentStatus === "PAID") return "Pago";
   if (order.paymentStatus === "CANCELLED") return "Cancelado";
   return "Pendente";
+}
+
+function onlyDigits(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+function isCpfLikeQuery(value: string) {
+  return value.trim() === "" || /^[\d.\-\s]+$/.test(value);
+}
+
+function normalizeClientSearch(value: string) {
+  if (isCpfLikeQuery(value)) {
+    return onlyDigits(value).slice(0, 11);
+  }
+  return value.replace(/\s+/g, " ").trimStart().slice(0, 80);
 }

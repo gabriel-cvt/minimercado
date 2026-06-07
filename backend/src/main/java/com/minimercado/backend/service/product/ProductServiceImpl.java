@@ -4,6 +4,7 @@ import com.minimercado.backend.dto.product.ProductPostDTO;
 import com.minimercado.backend.dto.product.ProductPutDTO;
 import com.minimercado.backend.dto.product.ProductResponseDTO;
 import com.minimercado.backend.dto.product.ProductVariantInputDTO;
+import com.minimercado.backend.enums.ProductVariantSelectionMode;
 import com.minimercado.backend.mapper.ProductMapper;
 import com.minimercado.backend.model.Product;
 import com.minimercado.backend.model.ProductIcon;
@@ -112,6 +113,7 @@ public class ProductServiceImpl implements ProductService {
                 data.hasVariants(),
                 data.variantType(),
                 data.variantSelectionRequired(),
+                data.variantSelectionMode(),
                 data.variants()
         );
         return product;
@@ -133,6 +135,7 @@ public class ProductServiceImpl implements ProductService {
         if (data.hasVariants() != null ||
                 data.variantType() != null ||
                 data.variantSelectionRequired() != null ||
+                data.variantSelectionMode() != null ||
                 data.variants() != null) {
             configureProduct(
                     product,
@@ -141,6 +144,9 @@ public class ProductServiceImpl implements ProductService {
                     data.variantSelectionRequired() != null
                             ? data.variantSelectionRequired()
                             : product.getVariantSelectionRequired(),
+                    data.variantSelectionMode() != null
+                            ? data.variantSelectionMode()
+                            : product.getVariantSelectionMode(),
                     data.variants() != null
                             ? data.variants()
                             : product.getVariants().stream()
@@ -159,8 +165,12 @@ public class ProductServiceImpl implements ProductService {
             Boolean hasVariants,
             String variantType,
             Boolean variantSelectionRequired,
+            ProductVariantSelectionMode variantSelectionMode,
             List<ProductVariantInputDTO> variants) {
         boolean resolvedHasVariants = Boolean.TRUE.equals(hasVariants);
+        ProductVariantSelectionMode resolvedSelectionMode = variantSelectionMode == null
+                ? ProductVariantSelectionMode.SINGLE
+                : variantSelectionMode;
 
         product.setHasVariants(resolvedHasVariants);
 
@@ -174,10 +184,12 @@ public class ProductServiceImpl implements ProductService {
             validateVariantNames(variants);
             product.setVariantType(variantType.trim());
             product.setVariantSelectionRequired(Boolean.TRUE.equals(variantSelectionRequired));
+            product.setVariantSelectionMode(resolvedSelectionMode);
             product.replaceVariants(buildVariants(product, variants));
         } else {
             product.setVariantType(null);
             product.setVariantSelectionRequired(false);
+            product.setVariantSelectionMode(ProductVariantSelectionMode.SINGLE);
             product.replaceVariants(List.of());
         }
     }

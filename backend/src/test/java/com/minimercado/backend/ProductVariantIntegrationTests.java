@@ -130,6 +130,50 @@ class ProductVariantIntegrationTests {
     }
 
     @Test
+    void productCanAcceptMultipleSelectedVariants() throws Exception {
+        createClient("89314409750");
+        JsonNode sandwich = createProduct("""
+                {
+                  "name": "Sanduiche",
+                  "price": 15.00,
+                  "stockQuantity": 5,
+                  "hasVariants": true,
+                  "variantType": "Adicional",
+                  "variantSelectionRequired": true,
+                  "variantSelectionMode": "MULTIPLE",
+                  "variants": [
+                    { "name": "Queijo", "available": true },
+                    { "name": "Bacon", "available": true },
+                    { "name": "Ovo", "available": true }
+                  ]
+                }
+                """);
+        long productId = sandwich.get("id").asLong();
+        long cheeseVariantId = sandwich.get("variants").get(0).get("id").asLong();
+        long baconVariantId = sandwich.get("variants").get(1).get("id").asLong();
+
+        mockMvc.perform(post("/api/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "items": [{
+                                    "productId": %d,
+                                    "quantity": 1,
+                                    "selectedVariantIds": [%d, %d]
+                                  }],
+                                  "clienteCpf": "89314409750",
+                                  "paymentMethod": "PIX"
+                                }
+                                """.formatted(productId, cheeseVariantId, baconVariantId)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.items[0].selectedVariantId").value(cheeseVariantId))
+                .andExpect(jsonPath("$.items[0].selectedVariantName").value("Queijo, Bacon"))
+                .andExpect(jsonPath("$.items[0].selectedVariantIds.length()").value(2))
+                .andExpect(jsonPath("$.items[0].selectedVariantNames[0]").value("Queijo"))
+                .andExpect(jsonPath("$.items[0].selectedVariantNames[1]").value("Bacon"));
+    }
+
+    @Test
     void productUsesLocalIconKeyInsteadOfRemoteImageUrl() throws Exception {
         JsonNode product = createProduct("""
                 {

@@ -24,6 +24,7 @@ import {
   updateProduct,
   updateProductStock,
   type ApiProduct,
+  type ApiProductVariantSelectionMode,
 } from "@/lib/api";
 import { formatBRL } from "@/lib/format";
 import { fuzzyFilterByName } from "@/lib/fuzzy-search";
@@ -73,6 +74,7 @@ type ProductConfiguration = {
   hasVariants: boolean;
   variantType: string;
   variantSelectionRequired: boolean;
+  variantSelectionMode: ApiProductVariantSelectionMode;
   variants: VariantDraft[];
 };
 type CreateProductFormData = CreateFormData & ProductConfiguration;
@@ -167,6 +169,7 @@ export function ProductsManagement() {
         hasVariants: data.hasVariants,
         variantType: data.variantType || undefined,
         variantSelectionRequired: data.variantSelectionRequired,
+        variantSelectionMode: data.variantSelectionMode,
         variants: data.variants,
       }),
     onSuccess: async () => {
@@ -457,7 +460,8 @@ function ProductCard({
         <div className="flex flex-wrap gap-2">
           {product.hasVariants && (
             <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
-              {product.variantType} · {product.variants.length} opções
+              {product.variantType} · {product.variants.length} opções ·{" "}
+              {product.variantSelectionMode === "MULTIPLE" ? "Combinação" : "Exclusiva"}
             </span>
           )}
         </div>
@@ -590,6 +594,7 @@ function EditProductModal({
     hasVariants: product.hasVariants,
     variantType: product.variantType ?? "",
     variantSelectionRequired: product.variantSelectionRequired,
+    variantSelectionMode: product.variantSelectionMode ?? "SINGLE",
     variants: product.variants.map((variant) => ({
       id: variant.id,
       name: variant.name,
@@ -729,6 +734,9 @@ function ProductConfigurationFields({
               variantSelectionRequired: event.target.checked
                 ? configuration.variantSelectionRequired
                 : false,
+              variantSelectionMode: event.target.checked
+                ? configuration.variantSelectionMode
+                : "SINGLE",
               variants:
                 event.target.checked && configuration.variants.length === 0
                   ? [{ name: "", available: true }]
@@ -766,6 +774,38 @@ function ProductConfigurationFields({
               />
               Escolha obrigatória
             </label>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {[
+              {
+                value: "SINGLE" as const,
+                title: "Exclusiva",
+                detail: "Cliente escolhe apenas uma opção.",
+              },
+              {
+                value: "MULTIPLE" as const,
+                title: "Combinação",
+                detail: "Cliente pode marcar várias opções.",
+              },
+            ].map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() =>
+                  onChange({ ...configuration, variantSelectionMode: option.value })
+                }
+                className={`rounded-xl border-2 p-3 text-left transition-colors ${
+                  configuration.variantSelectionMode === option.value
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-muted/40 hover:border-primary/40"
+                }`}
+              >
+                <span className="block text-sm font-black">{option.title}</span>
+                <span className="block text-xs font-semibold text-muted-foreground">
+                  {option.detail}
+                </span>
+              </button>
+            ))}
           </div>
           <p className="text-xs text-muted-foreground">
             Todas as variantes usam o preço do produto. Desmarque disponível para ocultar apenas uma
@@ -828,6 +868,7 @@ function emptyProductConfiguration(): ProductConfiguration {
     hasVariants: false,
     variantType: "",
     variantSelectionRequired: false,
+    variantSelectionMode: "SINGLE",
     variants: [],
   };
 }
@@ -848,6 +889,7 @@ function validateConfiguration(configuration: ProductConfiguration): ProductConf
     ...configuration,
     variantType: configuration.hasVariants ? configuration.variantType.trim() : "",
     variantSelectionRequired: configuration.hasVariants && configuration.variantSelectionRequired,
+    variantSelectionMode: configuration.hasVariants ? configuration.variantSelectionMode : "SINGLE",
     variants: configuration.hasVariants
       ? variants.map((variant) => ({ ...variant, name: variant.name.trim() }))
       : [],

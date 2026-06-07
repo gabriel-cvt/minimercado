@@ -13,6 +13,7 @@ import com.minimercado.backend.enums.OrderRealtimeEventType;
 import com.minimercado.backend.enums.OrderStatus;
 import com.minimercado.backend.enums.PaymentMethod;
 import com.minimercado.backend.enums.PaymentStatus;
+import com.minimercado.backend.enums.ProductVariantSelectionMode;
 import com.minimercado.backend.mapper.OrderMapper;
 import com.minimercado.backend.model.Client;
 import com.minimercado.backend.model.Order;
@@ -36,6 +37,7 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -277,13 +279,15 @@ public class OrderServiceImpl implements OrderService{
     private List<OrderItem> buildOrderItems(List<OrderItemRequestDTO> items, Order order, boolean requireActiveProduct) {
         Map<String, Integer> remainingReservedVariants = new HashMap<>();
         List<OrderItem> currentItems = order.getItems() == null ? List.of() : order.getItems();
-        currentItems.stream()
-                .filter(item -> item.getSelectedVariantId() != null)
-                .forEach(item -> remainingReservedVariants.merge(
-                        variantReservationKey(item.getProduct().getId(), item.getSelectedVariantId()),
-                        item.getQuantity(),
-                        Integer::sum
-                ));
+        currentItems.forEach(item ->
+                item.selectedVariantIdsOrLegacy().forEach(variantId ->
+                        remainingReservedVariants.merge(
+                                variantReservationKey(item.getProduct().getId(), variantId),
+                                item.getQuantity(),
+                                Integer::sum
+                        )
+                )
+        );
 
         return new ArrayList<>(items.stream()
                 .map(itemDto -> {
@@ -291,43 +295,72 @@ public class OrderServiceImpl implements OrderService{
                     Product product = requireActiveProduct
                             ? findOrderableProductById(itemDto.productId())
                             : findProductById(itemDto.productId());
-                    ProductVariant selectedVariant = resolveSelectedVariant(product, itemDto.selectedVariantId());
-                    validateVariantAvailability(
-                            product,
-                            selectedVariant,
-                            itemDto.quantity(),
-                            remainingReservedVariants
+                    List<ProductVariant> selectedVariants = resolveSelectedVariants(product, itemDto);
+                    selectedVariants.forEach(variant ->
+                            validateVariantAvailability(
+                                    product,
+                                    variant,
+                                    itemDto.quantity(),
+                                    remainingReservedVariants
+                            )
                     );
                     return new OrderItem(
                             product,
                             order,
                             itemDto.quantity(),
-                            selectedVariant
+                            selectedVariants
                     );
                 })
                 .toList());
     }
 
-    private ProductVariant resolveSelectedVariant(Product product, Long selectedVariantId) {
+    private List<ProductVariant> resolveSelectedVariants(Product product, OrderItemRequestDTO itemDto) {
+        List<Long> selectedVariantIds = normalizeSelectedVariantIds(itemDto);
         if (!Boolean.TRUE.equals(product.getHasVariants())) {
-            if (selectedVariantId != null) {
+            if (!selectedVariantIds.isEmpty()) {
                 throw new IllegalArgumentException("O produto informado nao possui variantes");
             }
-            return null;
+            return List.of();
         }
 
-        if (selectedVariantId == null) {
+        if (selectedVariantIds.isEmpty()) {
             if (Boolean.TRUE.equals(product.getVariantSelectionRequired())) {
                 throw new IllegalArgumentException("Selecione " + product.getVariantType() + " para " + product.getName());
             }
-            return null;
+            return List.of();
         }
 
-        ProductVariant variant = product.getVariants().stream()
-                .filter(item -> item.getId().equals(selectedVariantId))
-                .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("A variante nao pertence ao produto informado"));
-        return variant;
+        ProductVariantSelectionMode selectionMode = product.getVariantSelectionMode() == null
+                ? ProductVariantSelectionMode.SINGLE
+                : product.getVariantSelectionMode();
+        if (selectionMode == ProductVariantSelectionMode.SINGLE && selectedVariantIds.size() > 1) {
+            throw new IllegalArgumentException("Selecione apenas uma opcao de " + product.getVariantType() + " para " + product.getName());
+        }
+
+        Map<Long, ProductVariant> variantsById = product.getVariants().stream()
+                .collect(Collectors.toMap(ProductVariant::getId, variant -> variant));
+        return selectedVariantIds.stream()
+                .map(variantId -> {
+                    ProductVariant variant = variantsById.get(variantId);
+                    if (variant == null) {
+                        throw new IllegalArgumentException("A variante nao pertence ao produto informado");
+                    }
+                    return variant;
+                })
+                .toList();
+    }
+
+    private List<Long> normalizeSelectedVariantIds(OrderItemRequestDTO itemDto) {
+        LinkedHashSet<Long> selectedVariantIds = new LinkedHashSet<>();
+        if (itemDto.selectedVariantIds() != null) {
+            itemDto.selectedVariantIds().stream()
+                    .filter(java.util.Objects::nonNull)
+                    .forEach(selectedVariantIds::add);
+        }
+        if (itemDto.selectedVariantId() != null) {
+            selectedVariantIds.add(itemDto.selectedVariantId());
+        }
+        return new ArrayList<>(selectedVariantIds);
     }
 
     private void validateVariantAvailability(
@@ -427,7 +460,9 @@ public class OrderServiceImpl implements OrderService{
                         item.getProduct().getId(),
                         item.getProductName(),
                         item.getQuantity(),
-                        item.getSelectedVariantName()
+                        item.getSelectedVariantNames() == null
+                                ? item.getSelectedVariantName()
+                                : item.getSelectedVariantNames()
                 ))
                 .toList();
     }

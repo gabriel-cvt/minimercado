@@ -127,6 +127,17 @@ class OrderPaymentIntegrationTests {
                 .andExpect(jsonPath("$.paidAt").exists());
     }
 
+    @Test
+    void orderCanUseCardPaymentMethod() throws Exception {
+        long productId = createProductAndClient("12345678909");
+        long orderId = createOrder(productId, "12345678909", "CARTAO");
+
+        mockMvc.perform(patch("/api/orders/{id}/pay", orderId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paymentMethod").value("CARTAO"))
+                .andExpect(jsonPath("$.paymentStatus").value("PAID"));
+    }
+
     private long createProductAndClient(String cpf) throws Exception {
         mockMvc.perform(post("/api/clients")
                         .contentType(MediaType.APPLICATION_JSON)
