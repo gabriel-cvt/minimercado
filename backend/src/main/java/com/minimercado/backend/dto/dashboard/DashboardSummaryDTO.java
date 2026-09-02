@@ -1,10 +1,12 @@
 package com.minimercado.backend.dto.dashboard;
 
+import java.math.BigDecimal;
+
 public record DashboardSummaryDTO(
         Long ordersToday,
         Long totalOrders,
-        Double revenueToday,
-        Double totalRevenue,
+        BigDecimal revenueToday,
+        BigDecimal totalRevenue,
         Long pendingPayments,
         Long preparingOrders,
         Long readyForPickupOrders,

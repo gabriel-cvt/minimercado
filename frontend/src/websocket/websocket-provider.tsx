@@ -22,8 +22,13 @@ export function WebSocketProvider({
 }) {
   useEffect(() => {
     void websocketService.connect();
+    const reconnect = () => {
+      websocketService.disconnect();
+      void websocketService.connect();
+    };
+    window.addEventListener("operational-auth-changed", reconnect);
     return () => {
-      // keep connection alive across route changes; only disconnect on unload
+      window.removeEventListener("operational-auth-changed", reconnect);
     };
   }, []);
 
@@ -31,8 +36,9 @@ export function WebSocketProvider({
   // only notifies when the current screen has no contextual feedback.
   const onKitchen = useKitchenOrderToast(pathname);
   const onPickup = usePickupOrderToast(pathname);
-  useKitchenOrdersSocket(onKitchen);
-  usePickupOrdersSocket(onPickup);
+  const operational = !pathname.startsWith("/painel");
+  useKitchenOrdersSocket(onKitchen, operational);
+  usePickupOrdersSocket(onPickup, operational);
 
   return (
     <WebSocketContext.Provider value={{ enabled: true }}>

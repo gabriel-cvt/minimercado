@@ -4,27 +4,18 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useForm, type UseFormRegisterReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import {
-  AlertTriangle,
-  Boxes,
-  Package,
-  PackagePlus,
-  Pencil,
-  Search,
-  Trash2,
-  TrendingUp,
-  X,
-} from "lucide-react";
+import { AlertTriangle, Package, PackagePlus, Pencil, Search, TrendingUp, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   createProduct,
+  getAllProducts,
   getProduct,
   getProducts,
-  removeProduct,
   updateProduct,
-  updateProductStock,
+  updateProductAvailability,
   type ApiProduct,
   type ApiProductVariantSelectionMode,
+  type Page,
 } from "@/lib/api";
 import { formatBRL } from "@/lib/format";
 import { fuzzyFilterByName } from "@/lib/fuzzy-search";
@@ -45,30 +36,18 @@ const productIconSchema = z.enum([
 ]);
 
 const createSchema = z.object({
-  name: z.string().trim().min(2, "Nome muito curto").max(80, "Nome muito longo"),
+  name: z.string().trim().min(1, "Informe o nome").max(255, "Nome muito longo"),
   price: z
     .number({ invalid_type_error: "Informe um preço" })
-    .positive("O preço deve ser maior que 0")
-    .max(10000, "Preço muito alto"),
+    .positive("O preço deve ser maior que 0"),
   icon: productIconSchema,
-  stockQuantity: z
-    .number({ invalid_type_error: "Informe o estoque" })
-    .int("Informe um número inteiro")
-    .min(0, "O estoque não pode ser negativo"),
 });
 
-const editSchema = createSchema.omit({ stockQuantity: true });
-const stockSchema = z.object({
-  quantityChange: z
-    .number({ invalid_type_error: "Informe a movimentação" })
-    .int("Informe um número inteiro")
-    .refine((value) => value !== 0, "O ajuste deve ser diferente de zero"),
-});
+const editSchema = createSchema;
 
 type CreateFormData = z.infer<typeof createSchema>;
 type EditFormData = z.infer<typeof editSchema>;
-type StockFormData = z.infer<typeof stockSchema>;
-type StockFilter = "all" | "available" | "out";
+type AvailabilityFilter = "all" | "available" | "unavailable";
 type VariantDraft = { id?: number; name: string; available: boolean };
 type ProductConfiguration = {
   hasVariants: boolean;
@@ -86,23 +65,33 @@ export function ProductsManagement() {
   const queryClient = useQueryClient();
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [stockFilter, setStockFilter] = useState<StockFilter>("all");
+  const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>("all");
   const [page, setPage] = useState(0);
   const [showCreate, setShowCreate] = useState(false);
   const [editTarget, setEditTarget] = useState<ApiProduct | null>(null);
-  const [stockTarget, setStockTarget] = useState<ApiProduct | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<ApiProduct | null>(null);
   const hasSearch = search.trim().length > 0;
 
-  const productsQuery = useQuery({
-    queryKey: ["products", "management", search, stockFilter, hasSearch ? "all" : page],
-    queryFn: () =>
-      getProducts({
-        inStock: stockFilter === "all" ? undefined : stockFilter === "available",
-        page: hasSearch ? 0 : page,
-        size: hasSearch ? 1000 : PAGE_SIZE,
-        sort: "name,asc",
-      }),
+  const productsQuery = useQuery<Page<ApiProduct>>({
+    queryKey: ["products", "management", search, availabilityFilter, hasSearch ? "all" : page],
+    queryFn: async () => {
+      const available =
+        availabilityFilter === "all" ? undefined : availabilityFilter === "available";
+      if (!hasSearch) {
+        return getProducts({ available, page, size: PAGE_SIZE, sort: "name,asc" });
+      }
+
+      const allProducts = await getAllProducts({ available, sort: "name,asc" });
+      return {
+        content: allProducts,
+        totalElements: allProducts.length,
+        totalPages: 1,
+        size: allProducts.length,
+        number: 0,
+        first: true,
+        last: true,
+        empty: allProducts.length === 0,
+      };
+    },
   });
 
   const fetchedProducts = useMemo(
@@ -129,9 +118,8 @@ export function ProductsManagement() {
   const stats = useMemo(
     () => ({
       total: totalElements,
-      available: products.filter((product) => product.stockQuantity > 0).length,
-      unavailable: products.filter((product) => product.stockQuantity === 0).length,
-      units: products.reduce((total, product) => total + product.stockQuantity, 0),
+      available: products.filter((product) => product.available).length,
+      unavailable: products.filter((product) => !product.available).length,
     }),
     [products, totalElements],
   );
@@ -182,28 +170,15 @@ export function ProductsManagement() {
         duration: Infinity,
       }),
   });
-  const stockMutation = useMutation({
-    mutationFn: ({ id, quantityChange }: { id: number; quantityChange: number }) =>
-      updateProductStock(id, quantityChange),
-    onSuccess: async () => {
+  const availabilityMutation = useMutation({
+    mutationFn: ({ id, available }: { id: number; available: boolean }) =>
+      updateProductAvailability(id, available),
+    onSuccess: async (product) => {
       await refreshProducts();
-      setStockTarget(null);
-      toast.success("Estoque atualizado com sucesso");
+      toast.success(product.available ? "Produto habilitado para venda" : "Produto desabilitado");
     },
     onError: () =>
-      toast.error("Não foi possível ajustar o estoque", {
-        duration: Infinity,
-      }),
-  });
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => removeProduct(id),
-    onSuccess: async () => {
-      await refreshProducts();
-      setDeleteTarget(null);
-      toast.success("Produto removido do catálogo com sucesso");
-    },
-    onError: () =>
-      toast.error("Não foi possível remover o produto", {
+      toast.error("Não foi possível alterar a disponibilidade", {
         duration: Infinity,
       }),
   });
@@ -225,7 +200,7 @@ export function ProductsManagement() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-primary font-bold uppercase tracking-wider text-xs mb-1">
-            Catálogo e estoque
+            Catálogo e disponibilidade
           </p>
           <h1 className="text-3xl md:text-4xl font-black">Gestão de Produtos</h1>
           <p className="text-muted-foreground mt-1">
@@ -240,11 +215,10 @@ export function ProductsManagement() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
         <Metric icon={Package} label="Resultados" value={stats.total} />
-        <Metric icon={TrendingUp} label="Com estoque na página" value={stats.available} />
-        <Metric icon={AlertTriangle} label="Sem estoque na página" value={stats.unavailable} />
-        <Metric icon={Boxes} label="Unidades na página" value={stats.units} />
+        <Metric icon={TrendingUp} label="Habilitados na página" value={stats.available} />
+        <Metric icon={AlertTriangle} label="Desabilitados na página" value={stats.unavailable} />
       </div>
 
       <div className="bg-card rounded-2xl border shadow-card p-4 md:p-5 flex flex-col lg:flex-row gap-4 lg:items-center lg:justify-between">
@@ -275,18 +249,18 @@ export function ProductsManagement() {
         <div className="flex gap-2 overflow-x-auto">
           {[
             { id: "all" as const, label: "Todos" },
-            { id: "available" as const, label: "Com estoque" },
-            { id: "out" as const, label: "Sem estoque" },
+            { id: "available" as const, label: "Habilitados" },
+            { id: "unavailable" as const, label: "Desabilitados" },
           ].map((filter) => (
             <button
               key={filter.id}
               type="button"
               onClick={() => {
                 setPage(0);
-                setStockFilter(filter.id);
+                setAvailabilityFilter(filter.id);
               }}
               className={`whitespace-nowrap px-4 py-2.5 rounded-xl text-sm font-bold transition-colors ${
-                stockFilter === filter.id
+                availabilityFilter === filter.id
                   ? "bg-foreground text-background"
                   : "bg-muted text-muted-foreground hover:text-foreground"
               }`}
@@ -325,8 +299,12 @@ export function ProductsManagement() {
               product={product}
               editing={detailMutation.isPending && detailMutation.variables === product.id}
               onEdit={() => detailMutation.mutate(product.id)}
-              onStock={() => setStockTarget(product)}
-              onDelete={() => setDeleteTarget(product)}
+              toggling={
+                availabilityMutation.isPending && availabilityMutation.variables?.id === product.id
+              }
+              onToggle={() =>
+                availabilityMutation.mutate({ id: product.id, available: !product.available })
+              }
             />
           ))}
         </div>
@@ -373,24 +351,6 @@ export function ProductsManagement() {
             onSubmit={(data) => editMutation.mutate({ id: editTarget.id, data })}
           />
         )}
-        {stockTarget && (
-          <StockModal
-            product={stockTarget}
-            pending={stockMutation.isPending}
-            onClose={() => setStockTarget(null)}
-            onSubmit={(quantityChange) =>
-              stockMutation.mutate({ id: stockTarget.id, quantityChange })
-            }
-          />
-        )}
-        {deleteTarget && (
-          <DeleteModal
-            product={deleteTarget}
-            pending={deleteMutation.isPending}
-            onClose={() => setDeleteTarget(null)}
-            onConfirm={() => deleteMutation.mutate(deleteTarget.id)}
-          />
-        )}
       </AnimatePresence>
     </div>
   );
@@ -421,15 +381,15 @@ function Metric({
 function ProductCard({
   product,
   editing,
+  toggling,
   onEdit,
-  onStock,
-  onDelete,
+  onToggle,
 }: {
   product: ApiProduct;
   editing: boolean;
+  toggling: boolean;
   onEdit: () => void;
-  onStock: () => void;
-  onDelete: () => void;
+  onToggle: () => void;
 }) {
   return (
     <article className="bg-card border rounded-3xl overflow-hidden shadow-card flex flex-col">
@@ -448,14 +408,12 @@ function ProductCard({
         </div>
         <div
           className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${
-            product.stockQuantity > 0
+            product.available
               ? "bg-status-finished/15 text-status-finished"
               : "bg-destructive/10 text-destructive"
           }`}
         >
-          {product.stockQuantity > 0
-            ? `${product.stockQuantity} unidades em estoque`
-            : "Sem estoque"}
+          {product.available ? "Habilitado para venda" : "Desabilitado para venda"}
         </div>
         <div className="flex flex-wrap gap-2">
           {product.hasVariants && (
@@ -465,7 +423,7 @@ function ProductCard({
             </span>
           )}
         </div>
-        <div className="mt-auto grid grid-cols-[1fr_1fr_auto] gap-2 pt-2">
+        <div className="mt-auto grid grid-cols-2 gap-2 pt-2">
           <button
             type="button"
             onClick={onEdit}
@@ -477,19 +435,16 @@ function ProductCard({
           </button>
           <button
             type="button"
-            onClick={onStock}
-            aria-label={`Ajustar estoque de ${product.name}`}
-            className="rounded-xl bg-foreground text-background px-3 py-2 text-sm font-bold hover:bg-foreground/90"
+            onClick={onToggle}
+            disabled={toggling}
+            aria-label={`${product.available ? "Desabilitar" : "Habilitar"} ${product.name}`}
+            className={`rounded-xl px-3 py-2 text-sm font-bold disabled:opacity-50 ${
+              product.available
+                ? "border border-destructive/25 text-destructive hover:bg-destructive/10"
+                : "bg-foreground text-background hover:bg-foreground/90"
+            }`}
           >
-            Estoque
-          </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            aria-label={`Remover ${product.name}`}
-            className="rounded-xl border border-destructive/25 text-destructive p-2.5 hover:bg-destructive/10"
-          >
-            <Trash2 className="w-4 h-4" />
+            {toggling ? "Salvando..." : product.available ? "Desabilitar" : "Habilitar"}
           </button>
         </div>
       </div>
@@ -513,7 +468,7 @@ function CreateProductModal({
     formState: { errors },
   } = useForm<CreateFormData>({
     resolver: zodResolver(createSchema),
-    defaultValues: { name: "", price: 0, icon: "GENERAL", stockQuantity: 0 },
+    defaultValues: { name: "", price: 0, icon: "GENERAL" },
   });
   const [configuration, setConfiguration] = useState<ProductConfiguration>(
     emptyProductConfiguration(),
@@ -543,8 +498,6 @@ function CreateProductModal({
           priceError={errors.price?.message}
           iconField={register("icon")}
           iconError={errors.icon?.message}
-          stockField={register("stockQuantity", { valueAsNumber: true })}
-          stockError={errors.stockQuantity?.message}
         />
         <div>
           <p className="text-xs uppercase tracking-wider font-bold text-muted-foreground mb-2">
@@ -615,7 +568,7 @@ function EditProductModal({
   return (
     <Modal
       title={`Editar produto #${product.id}`}
-      subtitle="Para mudar a quantidade disponível, use a opção de estoque."
+      subtitle={`Disponibilidade: ${product.available ? "habilitado" : "desabilitado"}.`}
       onClose={onClose}
     >
       <form onSubmit={handleSubmit(submit)} className="grid md:grid-cols-[1fr_180px] gap-5">
@@ -632,9 +585,6 @@ function EditProductModal({
             Pré-visualização
           </p>
           <ProductVisual icon={watch("icon")} className="aspect-[16/10] rounded-2xl" />
-          <p className="mt-3 text-sm font-semibold text-muted-foreground">
-            Estoque atual: {product.stockQuantity}
-          </p>
         </div>
         <ProductConfigurationFields
           configuration={configuration}
@@ -643,6 +593,7 @@ function EditProductModal({
             setConfigurationError(undefined);
           }}
           error={configurationError}
+          preserveExistingVariants
         />
         <ModalActions pending={pending} action="Salvar alterações" onClose={onClose} />
       </form>
@@ -657,8 +608,6 @@ function ProductFields({
   priceError,
   iconField,
   iconError,
-  stockField,
-  stockError,
 }: {
   nameField: UseFormRegisterReturn;
   nameError?: string;
@@ -666,23 +615,21 @@ function ProductFields({
   priceError?: string;
   iconField: UseFormRegisterReturn;
   iconError?: string;
-  stockField?: UseFormRegisterReturn;
-  stockError?: string;
 }) {
   return (
     <div className="space-y-4">
       <Field label="Nome do produto" error={nameError}>
-        <input {...nameField} placeholder="Ex: Sanduíche especial" className="input" />
+        <input
+          {...nameField}
+          maxLength={255}
+          placeholder="Ex: Sanduíche especial"
+          className="input"
+        />
       </Field>
-      <div className={`grid gap-4 ${stockField ? "grid-cols-2" : ""}`}>
+      <div className="grid gap-4">
         <Field label="Preço (R$)" error={priceError}>
           <input type="number" step="0.01" {...priceField} className="input font-mono" />
         </Field>
-        {stockField && (
-          <Field label="Estoque inicial" error={stockError}>
-            <input type="number" min={0} {...stockField} className="input font-mono" />
-          </Field>
-        )}
       </div>
       <Field label="Ícone do produto" error={iconError}>
         <select {...iconField} className="input">
@@ -701,10 +648,12 @@ function ProductConfigurationFields({
   configuration,
   onChange,
   error,
+  preserveExistingVariants = false,
 }: {
   configuration: ProductConfiguration;
   onChange: (configuration: ProductConfiguration) => void;
   error?: string;
+  preserveExistingVariants?: boolean;
 }) {
   const updateVariant = (index: number, variant: VariantDraft) =>
     onChange({
@@ -726,6 +675,9 @@ function ProductConfigurationFields({
       <label className="flex items-center gap-3 rounded-xl bg-card border p-3">
         <input
           type="checkbox"
+          disabled={
+            preserveExistingVariants && configuration.variants.some((variant) => variant.id)
+          }
           checked={configuration.hasVariants}
           onChange={(event) =>
             onChange({
@@ -791,9 +743,7 @@ function ProductConfigurationFields({
               <button
                 key={option.value}
                 type="button"
-                onClick={() =>
-                  onChange({ ...configuration, variantSelectionMode: option.value })
-                }
+                onClick={() => onChange({ ...configuration, variantSelectionMode: option.value })}
                 className={`rounded-xl border-2 p-3 text-left transition-colors ${
                   configuration.variantSelectionMode === option.value
                     ? "border-primary bg-primary/10 text-primary"
@@ -832,15 +782,16 @@ function ProductConfigurationFields({
               </label>
               <button
                 type="button"
+                disabled={Boolean(variant.id)}
                 onClick={() =>
                   onChange({
                     ...configuration,
                     variants: configuration.variants.filter((_, itemIndex) => itemIndex !== index),
                   })
                 }
-                className="h-12 px-3 rounded-xl border text-destructive font-bold"
+                className="h-12 px-3 rounded-xl border text-destructive font-bold disabled:text-muted-foreground disabled:opacity-60"
               >
-                Remover
+                {variant.id ? "Preservada" : "Remover"}
               </button>
             </div>
           ))}
@@ -896,119 +847,6 @@ function validateConfiguration(configuration: ProductConfiguration): ProductConf
   };
 }
 
-function StockModal({
-  product,
-  pending,
-  onClose,
-  onSubmit,
-}: {
-  product: ApiProduct;
-  pending: boolean;
-  onClose: () => void;
-  onSubmit: (quantityChange: number) => void;
-}) {
-  const {
-    register,
-    handleSubmit,
-    watch,
-    formState: { errors },
-  } = useForm<StockFormData>({
-    resolver: zodResolver(stockSchema),
-    defaultValues: { quantityChange: 0 },
-  });
-  const quantityChange = watch("quantityChange");
-  const projectedStock =
-    product.stockQuantity + (Number.isFinite(quantityChange) ? quantityChange : 0);
-  const invalidProjectedStock = projectedStock < 0;
-
-  return (
-    <Modal title="Ajustar estoque" subtitle={product.name} onClose={onClose} narrow>
-      <form
-        onSubmit={handleSubmit((data) => {
-          if (product.stockQuantity + data.quantityChange >= 0) {
-            onSubmit(data.quantityChange);
-          }
-        })}
-        className="space-y-5"
-      >
-        <div className="rounded-2xl bg-muted p-4 flex justify-between items-center">
-          <span className="text-sm text-muted-foreground font-semibold">Estoque atual</span>
-          <span className="font-black text-xl">{product.stockQuantity}</span>
-        </div>
-        <Field
-          label="Movimentação de unidades"
-          error={
-            errors.quantityChange?.message ??
-            (invalidProjectedStock ? "O estoque final não pode ser negativo" : undefined)
-          }
-        >
-          <input
-            type="number"
-            {...register("quantityChange", { valueAsNumber: true })}
-            placeholder="Ex: 10 ou -3"
-            className="input font-mono"
-          />
-        </Field>
-        <p className="text-sm text-muted-foreground">
-          Use valores positivos para entrada e negativos para saída.
-        </p>
-        <div className="rounded-2xl border p-4 flex justify-between items-center">
-          <span className="font-semibold">Estoque após ajuste</span>
-          <span
-            className={`text-xl font-black ${invalidProjectedStock ? "text-destructive" : "text-primary"}`}
-          >
-            {projectedStock}
-          </span>
-        </div>
-        <ModalActions
-          pending={pending || invalidProjectedStock}
-          action="Confirmar ajuste"
-          onClose={onClose}
-        />
-      </form>
-    </Modal>
-  );
-}
-
-function DeleteModal({
-  product,
-  pending,
-  onClose,
-  onConfirm,
-}: {
-  product: ApiProduct;
-  pending: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <Modal
-      title="Remover produto"
-      subtitle="O produto sairá do catálogo, preservando pedidos anteriores."
-      onClose={onClose}
-      narrow
-    >
-      <p className="text-sm text-muted-foreground mb-6">
-        Tem certeza que deseja remover <strong className="text-foreground">{product.name}</strong>{" "}
-        do catálogo?
-      </p>
-      <div className="flex gap-3">
-        <button type="button" onClick={onClose} className="flex-1 border rounded-xl py-3 font-bold">
-          Cancelar
-        </button>
-        <button
-          type="button"
-          disabled={pending}
-          onClick={onConfirm}
-          className="flex-1 rounded-xl py-3 bg-destructive text-white font-bold disabled:opacity-50"
-        >
-          {pending ? "Removendo..." : "Remover"}
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
 function Modal({
   title,
   subtitle,
@@ -1027,7 +865,7 @@ function Modal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 bg-foreground/60 backdrop-blur-sm overflow-y-auto p-4 md:p-6 flex items-center justify-center"
+      className="fixed inset-0 z-50 flex flex-col overflow-y-auto bg-foreground/60 p-4 backdrop-blur-sm md:p-6"
       onClick={onClose}
     >
       <motion.div
@@ -1035,7 +873,7 @@ function Modal({
         animate={{ scale: 1, y: 0 }}
         exit={{ scale: 0.96, y: 15 }}
         onClick={(event) => event.stopPropagation()}
-        className={`bg-card rounded-3xl shadow-elegant w-full p-6 md:p-7 ${narrow ? "max-w-md" : "max-w-4xl"}`}
+        className={`mx-auto my-auto w-full shrink-0 rounded-3xl bg-card p-6 shadow-elegant md:p-7 ${narrow ? "max-w-md" : "max-w-4xl"}`}
       >
         <div className="flex justify-between gap-4 mb-5">
           <div>

@@ -4,13 +4,14 @@ import com.minimercado.backend.dto.order.OrderPaymentUpdateDTO;
 import com.minimercado.backend.dto.order.OrderPostDTO;
 import com.minimercado.backend.dto.order.OrderPutDTO;
 import com.minimercado.backend.dto.order.OrderResponseDTO;
+import com.minimercado.backend.dto.order.PublicOrderResponseDTO;
+import com.minimercado.backend.dto.PageResponse;
 import com.minimercado.backend.enums.OrderStatus;
 import com.minimercado.backend.enums.PaymentStatus;
 import com.minimercado.backend.service.order.OrderService;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -38,6 +39,8 @@ public class OrderController {
                     "paymentMethod",
                     "totalValue"
             );
+    private static final Set<String> PUBLIC_ORDER_SORT_FIELDS =
+            Set.of("id", "orderTime", "readyAt", "status");
 
     private final OrderService orderService;
 
@@ -47,37 +50,38 @@ public class OrderController {
     }
 
     @GetMapping(API_ORDER)
-    public ResponseEntity<Page<OrderResponseDTO>> list(
+    public ResponseEntity<PageResponse<OrderResponseDTO>> list(
             @RequestParam(required = false) OrderStatus status,
             @RequestParam(required = false) PaymentStatus paymentStatus,
-            @RequestParam(required = false) String clientCpf,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @Parameter(description = "Ordenacao no formato campo,direcao. Campos aceitos: id, orderTime, readyAt, finishedAt, paidAt, cancelledAt, status, paymentStatus, paymentMethod, totalValue.", example = "id,asc")
             @RequestParam(defaultValue = "orderTime,asc") String sort) {
-        return ResponseEntity.ok(orderService.list(
+        return ResponseEntity.ok(PageResponse.from(orderService.list(
                 status,
                 paymentStatus,
-                clientCpf,
                 from,
                 to,
                 PageRequestFactory.create(page, size, sort, ORDER_SORT_FIELDS)
-        ));
+        )));
     }
 
-    @GetMapping(API_ORDER_GET_BY_CLIENT_CPF)
-    public ResponseEntity<Page<OrderResponseDTO>> getByClient(
-            @PathVariable("cpf") String clientCpf,
+    @GetMapping(API_ORDER_PUBLIC)
+    public ResponseEntity<PageResponse<PublicOrderResponseDTO>> publicList(
+            @RequestParam OrderStatus status,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @Parameter(description = "Ordenacao no formato campo,direcao. Campos aceitos: id, orderTime, readyAt, finishedAt, paidAt, cancelledAt, status, paymentStatus, paymentMethod, totalValue.", example = "id,asc")
+            @RequestParam(defaultValue = "100") int size,
             @RequestParam(defaultValue = "orderTime,asc") String sort) {
-        return ResponseEntity.ok(orderService.getFromClient(
-                clientCpf,
-                PageRequestFactory.create(page, size, sort, ORDER_SORT_FIELDS)
-        ));
+        if (status != OrderStatus.PENDING && status != OrderStatus.READY_FOR_PICKUP) {
+            throw new IllegalArgumentException("Status nao permitido no painel publico");
+        }
+        var pageResult = orderService.list(
+                status, null, null, null,
+                PageRequestFactory.create(page, size, sort, PUBLIC_ORDER_SORT_FIELDS)
+        ).map(order -> new PublicOrderResponseDTO(order.id(), order.orderTime(), order.readyAt(), order.status()));
+        return ResponseEntity.ok(PageResponse.from(pageResult));
     }
 
     @PostMapping(API_ORDER)

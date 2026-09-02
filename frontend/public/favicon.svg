@@ -1,15 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <title>McDomine's</title>
-  <defs>
-    <linearGradient id="gold" x1="9" y1="5" x2="55" y2="59" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFE887"/>
-      <stop offset="1" stop-color="#F8BB21"/>
-    </linearGradient>
-    <linearGradient id="red" x1="18" y1="19" x2="47" y2="47" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#D32A30"/>
-      <stop offset="1" stop-color="#A91520"/>
-    </linearGradient>
-  </defs>
-  <rect x="3" y="3" width="58" height="58" rx="18" fill="url(#gold)" stroke="#F3AF18" stroke-width="1.5"/>
-  <path fill="url(#red)" d="M16 47V17h8l8 13 8-13h8v30h-8V30l-8 12-8-12v17z"/>
+  <title>Sistema de Pedidos</title>
+  <rect x="3" y="3" width="58" height="58" rx="18" fill="#B42318"/>
+  <g transform="translate(-3 -3)">
+    <path d="M18 20h5l4 21h21l4-15H25" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="30" cy="48" r="3" fill="#F7C948"/>
+    <circle cx="45" cy="48" r="3" fill="#F7C948"/>
+  </g>
 </svg>

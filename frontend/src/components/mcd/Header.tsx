@@ -1,7 +1,21 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, ShoppingBag, BarChart3, Tv, Menu, X, ChefHat, Package } from "lucide-react";
+import {
+  Home,
+  ShoppingBag,
+  BarChart3,
+  Tv,
+  Menu,
+  X,
+  ChefHat,
+  Package,
+  Settings,
+  LogOut,
+} from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { BrandLogo } from "@/branding/BrandLogo";
+import { useBranding } from "@/branding/branding";
+import { setOperationalKey } from "@/lib/api";
 
 const tabs = [
   { to: "/", label: "Início", icon: Home },
@@ -9,25 +23,27 @@ const tabs = [
   { to: "/produtos", label: "Produtos", icon: Package },
   { to: "/cozinha", label: "Cozinha", icon: ChefHat },
   { to: "/dashboard", label: "Resultados", icon: BarChart3 },
+  { to: "/configuracoes", label: "Configurações", icon: Settings },
 ] as const;
 
 export function Header() {
   const [open, setOpen] = useState(false);
   const path = useRouterState({ select: (s) => s.location.pathname });
+  const settings = useBranding();
 
   return (
-    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md shadow-card border-b">
+    <header className="sticky top-0 z-50 bg-card/95 backdrop-blur-md shadow-card border-b">
       <div className="max-w-7xl mx-auto px-4 md:px-6 h-[78px] flex items-center justify-between">
         <Link to="/" className="flex items-center gap-3 group">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-yellow flex items-center justify-center shadow-elegant group-hover:scale-105 transition-transform">
-            <span className="text-3xl font-black text-primary leading-none">M</span>
+          <div className="group-hover:scale-105 transition-transform">
+            <BrandLogo compact />
           </div>
           <div className="leading-tight">
             <div className="text-lg md:text-xl font-black tracking-tight text-foreground">
-              McDomine's
+              {settings.businessName}
             </div>
             <div className="text-[11px] text-muted-foreground font-medium hidden sm:block">
-              Sistema de Pedidos
+              {settings.tagline}
             </div>
           </div>
         </Link>
@@ -61,6 +77,18 @@ export function Header() {
           >
             <Tv className="w-4 h-4" /> Painel de Pedidos
           </Link>
+          <button
+            type="button"
+            onClick={() => {
+              setOperationalKey("");
+              window.location.reload();
+            }}
+            className="ml-1 rounded-xl p-2.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Sair do acesso operacional"
+            title="Sair"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
         </nav>
 
         <button
@@ -78,7 +106,7 @@ export function Header() {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="lg:hidden overflow-hidden border-t bg-white"
+            className="lg:hidden overflow-hidden border-t bg-card"
           >
             <div className="px-4 py-3 flex flex-col gap-1">
               {tabs.map((t) => {
@@ -102,6 +130,16 @@ export function Header() {
               >
                 <Tv className="w-5 h-5" /> Painel de Pedidos
               </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  setOperationalKey("");
+                  window.location.reload();
+                }}
+                className="flex items-center gap-3 rounded-xl px-4 py-3 font-semibold text-destructive hover:bg-muted"
+              >
+                <LogOut className="h-5 w-5" /> Sair
+              </button>
             </div>
           </motion.div>
         )}

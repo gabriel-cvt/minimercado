@@ -21,12 +21,16 @@ export function useWebSocketStatus() {
   return state;
 }
 
-export function useKitchenOrdersSocket(onEvent: (event: KitchenOrderEvent) => void): void {
+export function useKitchenOrdersSocket(
+  onEvent: (event: KitchenOrderEvent) => void,
+  enabled = true,
+): void {
   useEffect(() => {
+    if (!enabled) return;
     return websocketService.subscribe<KitchenOrderEvent>(WS_TOPICS.kitchenOrders, (payload) =>
       onEvent(payload),
     );
-  }, [onEvent]);
+  }, [enabled, onEvent]);
 }
 
 export function useOrdersSocket(onEvent: (event: OrderRealtimeEvent) => void): void {
@@ -45,10 +49,14 @@ export function usePublicOrdersSocket(onEvent: (event: OrderRealtimeEvent) => vo
   }, [onEvent]);
 }
 
-export function usePickupOrdersSocket(onEvent: (event: PickupOrderEvent) => void): void {
+export function usePickupOrdersSocket(
+  onEvent: (event: PickupOrderEvent) => void,
+  enabled = true,
+): void {
   useEffect(() => {
+    if (!enabled) return;
     return websocketService.subscribe<PickupOrderEvent>(WS_TOPICS.pickupOrders, (payload) =>
       onEvent(payload),
     );
-  }, [onEvent]);
+  }, [enabled, onEvent]);
 }

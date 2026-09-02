@@ -1,5 +1,20 @@
 # React + TypeScript + Vite
 
+## Personalização do estabelecimento
+
+A rota `/configuracoes` centraliza nome, slogan, textos institucionais, paleta, fonte e
+arredondamento. A configuração é carregada de `GET /api/settings/public` e aplicada por
+`BrandingProvider`; quando o backend não responde, o frontend continua com um tema neutro local.
+
+Configure `APP_ADMIN_KEY` no backend. O frontend solicita essa chave antes das telas operacionais e
+a mantém somente no `sessionStorage` da aba, enviando-a no header `X-Admin-Key`. Gestão de pedidos,
+pagamentos, produtos, cozinha, resultados e configurações ficam protegidos; identidade visual e
+painel de retirada permanecem públicos. A logo usa as iniciais configuradas e o favicon usa o
+ícone fixo de carrinho de compras.
+
+Novos componentes devem usar os tokens de `src/styles.css` (`primary`, `card`, `background`,
+`status-preparing`, `status-finished` etc.) e nunca codificar o nome ou as cores de uma marca.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:
@@ -17,9 +32,9 @@ If you are developing a production application, we recommend updating the config
 
 ```js
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(["dist"]),
   {
-    files: ['**/*.{ts,tsx}'],
+    files: ["**/*.{ts,tsx}"],
     extends: [
       // Other configs...
 
@@ -34,40 +49,40 @@ export default defineConfig([
     ],
     languageOptions: {
       parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        project: ["./tsconfig.node.json", "./tsconfig.app.json"],
         tsconfigRootDir: import.meta.dirname,
       },
       // other options...
     },
   },
-])
+]);
 ```
 
 You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
 
 ```js
 // eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+import reactX from "eslint-plugin-react-x";
+import reactDom from "eslint-plugin-react-dom";
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(["dist"]),
   {
-    files: ['**/*.{ts,tsx}'],
+    files: ["**/*.{ts,tsx}"],
     extends: [
       // Other configs...
       // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
+      reactX.configs["recommended-typescript"],
       // Enable lint rules for React DOM
       reactDom.configs.recommended,
     ],
     languageOptions: {
       parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        project: ["./tsconfig.node.json", "./tsconfig.app.json"],
         tsconfigRootDir: import.meta.dirname,
       },
       // other options...
     },
   },
-])
+]);
 ```

@@ -18,12 +18,9 @@ public interface OrderService {
     Page<OrderResponseDTO> list(
             OrderStatus status,
             PaymentStatus paymentStatus,
-            String clientCpf,
             LocalDateTime from,
             LocalDateTime to,
             Pageable pageable);
-
-    Page<OrderResponseDTO> getFromClient(String clientCpf, Pageable pageable);
 
     OrderResponseDTO create(OrderPostDTO data);
 

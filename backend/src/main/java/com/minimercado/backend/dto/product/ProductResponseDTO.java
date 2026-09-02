@@ -3,13 +3,14 @@ package com.minimercado.backend.dto.product;
 import com.minimercado.backend.enums.ProductVariantSelectionMode;
 import com.minimercado.backend.model.ProductIcon;
 import java.util.List;
+import java.math.BigDecimal;
 
 public record ProductResponseDTO(
     Long id,
     String name,
-    Double price,
+    BigDecimal price,
     ProductIcon icon,
-    Integer stockQuantity,
+    Boolean available,
     Boolean hasVariants,
     String variantType,
     Boolean variantSelectionRequired,

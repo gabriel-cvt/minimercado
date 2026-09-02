@@ -16,7 +16,7 @@ public class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("Minimercado API")
-                        .description("API para clientes, produtos, estoque e pedidos do minimercado")
+                        .description("API para produtos, disponibilidade, pedidos e analytics do minimercado")
                         .version("v1"))
                 .servers(List.of(new Server().url("/")));
     }

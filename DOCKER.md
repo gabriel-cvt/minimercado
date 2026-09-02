@@ -19,10 +19,14 @@ DB_PASS=troque_esta_senha
 POSTGRES_DB=minimercado
 POSTGRES_USER=minimercado
 POSTGRES_PASSWORD=troque_esta_senha
+APP_ADMIN_KEY=troque_esta_chave_operacional
+APP_CORS_ALLOWED_ORIGINS=*
 ```
 
-O profile `docker` usa PostgreSQL e `ddl-auto=update`, adequado para o volume persistente local. O profile `prod` continua disponível para um banco cujo schema já tenha sido preparado manualmente.
+Os profiles `docker` e `prod` usam Flyway para evoluir o banco e `ddl-auto=validate` para detectar divergências.
+Nesses profiles, Swagger e o documento OpenAPI ficam desabilitados; use o profile `dev` para inspecioná-los localmente.
 Mantenha `DB_PASS` e `POSTGRES_PASSWORD` com o mesmo valor.
+Defina `APP_ADMIN_KEY`; ela protege pedidos operacionais, pagamentos, produtos, cozinha, resultados e configurações. O CORS usa `APP_CORS_ALLOWED_ORIGINS=*` para aceitar navegadores de qualquer origem; a autorização das operações continua sendo feita pela chave operacional.
 
 No frontend, configure `frontend/.env` com o IP ou hostname da maquina que executa os containers, acessivel pelos computadores conectados ao switch:
 
@@ -31,7 +35,9 @@ VITE_API_URL=http://192.168.0.10:8080
 VITE_WS_URL=http://192.168.0.10:8080/ws
 ```
 
-As variaveis `VITE_*` sao incorporadas no build do frontend. Sempre execute o build novamente depois de trocar esse IP.
+`VITE_API_URL` e `VITE_WS_URL` sao os enderecos publicos acessados pelo navegador.
+O frontend usa `VITE_API_URL` tanto no navegador quanto na renderizacao inicial.
+As variaveis `VITE_*` sao incorporadas no build do frontend. Sempre execute o build novamente depois de troca-las.
 
 ## Subir
 

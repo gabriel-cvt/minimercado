@@ -13,6 +13,10 @@ import appCss from "../styles.css?url";
 import { Header } from "@/components/mcd/Header";
 import { Toaster } from "@/components/ui/sonner";
 import { WebSocketProvider } from "@/websocket/websocket-provider";
+import { BrandingProvider } from "@/branding/branding";
+import { DEFAULT_SETTINGS, themeTokens } from "@/branding/branding";
+import { getPublicSettings } from "@/lib/api";
+import { AccessGate } from "@/components/mcd/AccessGate";
 
 function NotFoundComponent() {
   return (
@@ -72,20 +76,21 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-  head: () => ({
+  loader: () => getPublicSettings().catch(() => DEFAULT_SETTINGS),
+  head: ({ loaderData }) => ({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "McDomine's — Sistema de Gerenciamento de Pedidos" },
+      { title: loaderData?.businessName ?? DEFAULT_SETTINGS.businessName },
       {
         name: "description",
-        content: "Sistema para registrar pedidos, acompanhar a cozinha e organizar retiradas.",
+        content: loaderData?.description ?? DEFAULT_SETTINGS.description,
       },
-      { name: "author", content: "McDomine's" },
-      { property: "og:title", content: "McDomine's — Sistema de Gerenciamento de Pedidos" },
+      { name: "author", content: loaderData?.businessName ?? DEFAULT_SETTINGS.businessName },
+      { property: "og:title", content: loaderData?.businessName ?? DEFAULT_SETTINGS.businessName },
       {
         property: "og:description",
-        content: "Sistema para registrar pedidos, acompanhar a cozinha e organizar retiradas.",
+        content: loaderData?.description ?? DEFAULT_SETTINGS.description,
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -94,7 +99,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         rel: "icon",
         type: "image/svg+xml",
-        href: "/favicon.svg?v=2",
+        href: "/favicon.svg?v=3",
       },
       {
         rel: "stylesheet",
@@ -109,8 +114,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: React.ReactNode }) {
+  const settings = Route.useLoaderData();
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" style={themeTokens(settings) as React.CSSProperties}>
       <head>
         <HeadContent />
       </head>
@@ -126,24 +132,29 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const isDisplay = path.startsWith("/painel");
+  const initialSettings = Route.useLoaderData();
 
   return (
     <QueryClientProvider client={queryClient}>
-      <WebSocketProvider pathname={path}>
-        <div className="min-h-screen flex flex-col">
-          {!isDisplay && <Header />}
-          <main className="flex-1">
-            <Outlet />
-          </main>
-        </div>
-        <Toaster
-          position="bottom-right"
-          richColors
-          closeButton
-          duration={3_000}
-          visibleToasts={3}
-        />
-      </WebSocketProvider>
+      <BrandingProvider initialSettings={initialSettings}>
+        <AccessGate pathname={path}>
+          <WebSocketProvider pathname={path}>
+            <div className="min-h-screen flex flex-col">
+              {!isDisplay && <Header />}
+              <main className="flex-1">
+                <Outlet />
+              </main>
+            </div>
+            <Toaster
+              position="bottom-right"
+              richColors
+              closeButton
+              duration={3_000}
+              visibleToasts={3}
+            />
+          </WebSocketProvider>
+        </AccessGate>
+      </BrandingProvider>
     </QueryClientProvider>
   );
 }

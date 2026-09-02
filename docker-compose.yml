@@ -1,7 +1,7 @@
 services:
   db:
     image: postgres:17-alpine
-    container_name: mcdominus-db
+    container_name: mini-db
     restart: unless-stopped
     env_file:
       - ./backend/.env
@@ -17,10 +17,10 @@ services:
 
   pgadmin:
     image: dpage/pgadmin4:9
-    container_name: mcdominus-pgadmin
+    container_name: mini-pgadmin
     restart: unless-stopped
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@mcdominus.com}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@mini.com}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
     ports:
       - "5050:80"
@@ -34,7 +34,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: mcdominus-backend
+    container_name: mini-backend
     restart: unless-stopped
     env_file:
       - ./backend/.env
@@ -48,7 +48,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: mcdominus-frontend
+    container_name: mini-frontend
     restart: unless-stopped
     env_file:
       - ./frontend/.env
@@ -59,6 +59,6 @@ services:
 
 volumes:
   postgres_data:
-    name: mcdominus_postgres_data
+    name: mini_postgres_data
   pgadmin_data:
-    name: mcdominus_pgadmin_data
+    name: mini_pgadmin_data

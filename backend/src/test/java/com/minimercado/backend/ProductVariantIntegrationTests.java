@@ -29,12 +29,10 @@ class ProductVariantIntegrationTests {
 
     @Test
     void requiredVariantMustBeAvailableAndIsStoredWithOrderObservation() throws Exception {
-        createClient("11144477735");
         JsonNode tapioca = createProduct("""
                 {
                   "name": "Tapioca",
                   "price": 10.00,
-                  "stockQuantity": 8,
                   "hasVariants": true,
                   "variantType": "Recheio",
                   "variantSelectionRequired": true,
@@ -50,17 +48,17 @@ class ProductVariantIntegrationTests {
 
         mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(orderPayload(productId, null, "11144477735", null)))
+                        .content(orderPayload(productId, null, null)))
                 .andExpect(status().isBadRequest());
 
         mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(orderPayload(productId, meatVariantId, "11144477735", null)))
+                        .content(orderPayload(productId, meatVariantId, null)))
                 .andExpect(status().isConflict());
 
         JsonNode createdOrder = objectMapper.readTree(mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(orderPayload(productId, chickenVariantId, "11144477735", "Sem molho")))
+                        .content(orderPayload(productId, chickenVariantId, "Sem molho")))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.observation").value("Sem molho"))
                 .andExpect(jsonPath("$.items[0].selectedVariantName").value("Frango"))
@@ -87,24 +85,22 @@ class ProductVariantIntegrationTests {
         long orderId = createdOrder.get("id").asLong();
         mockMvc.perform(put("/api/orders/{id}", orderId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(updateOrderPayload(productId, chickenVariantId, 1, "11144477735")))
+                        .content(updateOrderPayload(productId, chickenVariantId, 1)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].selectedVariantName").value("Frango"));
 
         mockMvc.perform(put("/api/orders/{id}", orderId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(updateOrderPayload(productId, chickenVariantId, 2, "11144477735")))
+                        .content(updateOrderPayload(productId, chickenVariantId, 2)))
                 .andExpect(status().isConflict());
     }
 
     @Test
     void productNamedComboUsesOrdinaryProductFlow() throws Exception {
-        createClient("52998224725");
         JsonNode combo = createProduct("""
                 {
                   "name": "Combo Hamburguer",
-                  "price": 20.00,
-                  "stockQuantity": 3
+                  "price": 20.00
                 }
                 """);
         long comboId = combo.get("id").asLong();
@@ -120,23 +116,21 @@ class ProductVariantIntegrationTests {
 
         mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(orderPayload(comboId, null, "52998224725", null)))
+                        .content(orderPayload(comboId, null, null)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.items[0].selectedVariantName").doesNotExist());
 
         mockMvc.perform(get("/api/products/{id}", comboId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.stockQuantity").value(2));
+                .andExpect(jsonPath("$.quantitySold").doesNotExist());
     }
 
     @Test
     void productCanAcceptMultipleSelectedVariants() throws Exception {
-        createClient("89314409750");
         JsonNode sandwich = createProduct("""
                 {
                   "name": "Sanduiche",
                   "price": 15.00,
-                  "stockQuantity": 5,
                   "hasVariants": true,
                   "variantType": "Adicional",
                   "variantSelectionRequired": true,
@@ -161,7 +155,6 @@ class ProductVariantIntegrationTests {
                                     "quantity": 1,
                                     "selectedVariantIds": [%d, %d]
                                   }],
-                                  "clienteCpf": "89314409750",
                                   "paymentMethod": "PIX"
                                 }
                                 """.formatted(productId, cheeseVariantId, baconVariantId)))
@@ -179,8 +172,7 @@ class ProductVariantIntegrationTests {
                 {
                   "name": "Suco",
                   "price": 7.00,
-                  "icon": "DRINK",
-                  "stockQuantity": 4
+                  "icon": "DRINK"
                 }
                 """);
         long productId = product.get("id").asLong();
@@ -202,20 +194,6 @@ class ProductVariantIntegrationTests {
                 .andExpect(jsonPath("$.urlImage").doesNotExist());
     }
 
-    private void createClient(String cpf) throws Exception {
-        mockMvc.perform(post("/api/clients")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "name": "Cliente Variacao",
-                                  "cpf": "%s",
-                                  "phoneNumber": "85999999999",
-                                  "team": "Minimercado"
-                                }
-                                """.formatted(cpf)))
-                .andExpect(status().isCreated());
-    }
-
     private JsonNode createProduct(String payload) throws Exception {
         return objectMapper.readTree(mockMvc.perform(post("/api/products")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -226,25 +204,24 @@ class ProductVariantIntegrationTests {
                 .getContentAsString());
     }
 
-    private String orderPayload(long productId, Long variantId, String cpf, String observation) {
+    private String orderPayload(long productId, Long variantId, String observation) {
         String variant = variantId == null ? "" : ", \"selectedVariantId\": " + variantId;
         String note = observation == null ? "" : ", \"observation\": \"" + observation + "\"";
         return """
                 {
                   "items": [{ "productId": %d, "quantity": 1%s }],
-                  "clienteCpf": "%s",
                   "paymentMethod": "PIX"%s
                 }
-                """.formatted(productId, variant, cpf, note);
+                """.formatted(productId, variant, note);
     }
 
-    private String updateOrderPayload(long productId, long variantId, int quantity, String cpf) {
+    private String updateOrderPayload(long productId, long variantId, int quantity) {
         return """
                 {
                   "items": [{ "productId": %d, "quantity": %d, "selectedVariantId": %d }],
-                  "clienteCpf": "%s",
+                  "paymentMethod": "PIX",
                   "observation": "Mantem sabor reservado"
                 }
-                """.formatted(productId, quantity, variantId, cpf);
+                """.formatted(productId, quantity, variantId);
     }
 }

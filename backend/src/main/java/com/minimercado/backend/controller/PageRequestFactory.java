@@ -8,10 +8,16 @@ import java.util.Set;
 
 final class PageRequestFactory {
 
+    private static final int MAX_PAGE_SIZE = 200;
+
     private PageRequestFactory() {
     }
 
     static Pageable create(int page, int size, String sort, Set<String> allowedSortFields) {
+        if (page < 0) throw new IllegalArgumentException("Pagina deve ser maior ou igual a zero");
+        if (size < 1 || size > MAX_PAGE_SIZE) {
+            throw new IllegalArgumentException("Tamanho da pagina deve estar entre 1 e " + MAX_PAGE_SIZE);
+        }
         String[] sortParts = sort.trim().split(",", -1);
 
         if (sortParts.length > 2 || sortParts[0].isBlank()) {

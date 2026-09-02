@@ -27,8 +27,8 @@ import {
   cancelOrder,
   finishOrder,
   getOrder,
-  getOrders,
-  getProducts,
+  getAllOrders,
+  getAllProducts,
   markOrderPaid,
   markOrderReady,
   updateOrder,
@@ -36,14 +36,7 @@ import {
   type ApiPaymentMethod,
   type ApiProduct,
 } from "@/lib/api";
-import {
-  formatBRL,
-  formatCPF,
-  formatDateTime,
-  formatPhone,
-  formatTime,
-  isValidCPF,
-} from "@/lib/format";
+import { formatBRL, formatDateTime, formatPhone, formatTime } from "@/lib/format";
 import type { ApiOrderStatus, OrderRealtimeEvent } from "@/websocket/websocket-types";
 import { useOrdersSocket } from "@/websocket/websocket-hooks";
 import {
@@ -83,8 +76,6 @@ const statusConfig: Record<
 };
 
 type OrderDetailsMode = "active" | "all";
-const ALL_ORDERS_FETCH_SIZE = 1000;
-const ACTIVE_ORDERS_FETCH_SIZE = 500;
 const ORDER_LIST_PAGE_SIZE = 100;
 
 export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
@@ -101,14 +92,10 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
   const [, force] = useState(0);
   const ordersQuery = useQuery({
     queryKey: ["orders", "details", mode],
-    queryFn: () =>
-      getOrders({
-        size: mode === "all" ? ALL_ORDERS_FETCH_SIZE : ACTIVE_ORDERS_FETCH_SIZE,
-        sort: "orderTime,desc",
-      }),
+    queryFn: () => getOrdersForDetails(mode),
   });
   const exportMutation = useMutation({
-    mutationFn: fetchAllOrdersForExport,
+    mutationFn: () => getAllOrders({ sort: "orderTime,desc" }),
     onSuccess: (ordersToExport) => {
       exportOrdersCsv(ordersToExport);
       toast.success(`${ordersToExport.length} pedido(s) exportado(s)`);
@@ -118,7 +105,7 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
         duration: Infinity,
       }),
   });
-  const orders = useMemo(() => ordersQuery.data?.content ?? [], [ordersQuery.data]);
+  const orders = useMemo(() => ordersQuery.data ?? [], [ordersQuery.data]);
   const normalizedOrderSearch = normalizeSearchText(orderSearch);
   const orderSearchDigits = orderSearch.replace(/\D/g, "");
   const hasOrderSearch =
@@ -132,7 +119,6 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
           ),
     [mode, normalizedOrderSearch, orderSearchDigits, orders],
   );
-  const totalAvailableOrders = ordersQuery.data?.totalElements ?? orders.length;
   const listPageCount = Math.max(1, Math.ceil(visibleOrders.length / ORDER_LIST_PAGE_SIZE));
   const currentListPage = Math.min(listPage, listPageCount - 1);
   const paginatedOrders = useMemo(
@@ -248,7 +234,9 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
     mutationFn: ({
       order,
       items,
-      clienteCpf,
+      customerName,
+      customerPhoneNumber,
+      customerTeam,
       observation,
     }: {
       order: ApiOrder;
@@ -258,11 +246,19 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
         selectedVariantId?: number;
         selectedVariantIds?: number[];
       }[];
-      clienteCpf: string;
+      customerName?: string;
+      customerPhoneNumber?: string;
+      customerTeam?: string;
       observation?: string;
     }) => {
       suppressNextRealtimeToast(order.id, "kitchen:UPDATED");
-      return updateOrder(order.id, { items, clienteCpf, observation });
+      return updateOrder(order.id, {
+        items,
+        customerName,
+        customerPhoneNumber,
+        customerTeam,
+        observation,
+      });
     },
     onSuccess: async (updated, variables) => {
       queryClient.setQueryData(["orders", "detail", updated.id], updated);
@@ -294,7 +290,7 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
       await queryClient.invalidateQueries({ queryKey: ["orders"] });
       await queryClient.invalidateQueries({ queryKey: ["products"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      toast.success(`Pedido #${order.id} cancelado e estoque devolvido`);
+      toast.success(`Pedido #${order.id} cancelado`);
       setConfirmCancel(false);
     },
     onError: async (error, id) => {
@@ -314,7 +310,7 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
   const subtitle =
     mode === "active"
       ? `${activeCount} pedido(s) ativo(s)`
-      : `${orders.length}${totalAvailableOrders > orders.length ? ` de ${totalAvailableOrders}` : ""} pedido(s) carregado(s) · ${closedCount} encerrado(s)${hasOrderSearch ? ` · ${visibleOrders.length} resultado(s)` : ""}`;
+      : `${orders.length} pedido(s) carregado(s) · ${closedCount} encerrado(s)${hasOrderSearch ? ` · ${visibleOrders.length} resultado(s)` : ""}`;
 
   return (
     <div>
@@ -344,12 +340,12 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
       {mode === "all" && (
         <div className="mb-6 max-w-xl">
           <label className="relative block">
-            <span className="sr-only">Buscar pedidos por nome ou CPF</span>
+            <span className="sr-only">Buscar pedidos por nome, telefone ou número</span>
             <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
             <input
               value={orderSearch}
               onChange={(event) => setOrderSearch(event.target.value)}
-              placeholder="Buscar por nome ou CPF"
+              placeholder="Buscar por nome, telefone ou número"
               className="input h-12 pl-12 pr-12 font-semibold"
             />
             {orderSearch && (
@@ -386,7 +382,7 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
           </p>
           <p className="text-muted-foreground">
             {hasOrderSearch
-              ? "Tente buscar por outro nome ou CPF."
+              ? "Tente buscar por outro nome, telefone ou número."
               : mode === "active"
                 ? "Pedidos finalizados e cancelados ficam na aba Todos os Pedidos."
                 : "Crie um pedido na aba de realização para visualizá-lo aqui."}
@@ -431,7 +427,7 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
                   <p className="text-muted-foreground text-sm font-semibold">Pedido</p>
                   <h2 className="text-4xl font-black">#{visibleSelected.id}</h2>
                   <p className="text-muted-foreground mt-1">
-                    {visibleSelected.client.name} ·{" "}
+                    {orderCustomerLabel(visibleSelected)} ·{" "}
                     {mode === "all"
                       ? formatDateTime(visibleSelected.orderTime)
                       : formatTime(visibleSelected.orderTime)}
@@ -528,8 +524,8 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
             order={editTarget}
             pending={editMutation.isPending}
             onClose={() => setEditTarget(null)}
-            onSubmit={(items, clienteCpf, observation) =>
-              editMutation.mutate({ order: editTarget, items, clienteCpf, observation })
+            onSubmit={(items, billing, observation) =>
+              editMutation.mutate({ order: editTarget, items, ...billing, observation })
             }
           />
         )}
@@ -647,7 +643,7 @@ export function OrderDetails({ mode = "active" }: { mode?: OrderDetailsMode }) {
               <XCircle className="w-14 h-14 mx-auto mb-4 text-destructive" />
               <h3 className="text-xl font-black mb-2">Cancelar pedido #{visibleSelected.id}?</h3>
               <p className="text-muted-foreground text-sm mb-3">
-                O pedido será retirado da operação e suas unidades voltarão ao estoque.
+                O pedido será retirado da operação e deixará de contar nas vendas do produto.
               </p>
               <div className="flex gap-3 mt-5">
                 <button
@@ -727,7 +723,7 @@ function OrderActionMenu({
                     : order.status === "READY_FOR_PICKUP"
                       ? "Retorna para a cozinha"
                       : canEdit
-                        ? "Itens e cliente"
+                        ? "Itens do pedido"
                         : "Pedido encerrado"
                 }
                 enabled={canEdit}
@@ -761,7 +757,7 @@ function OrderActionMenu({
                   order.paymentStatus === "PAID"
                     ? "Pedido pago exige estorno"
                     : canCancel
-                      ? "Devolve o estoque"
+                      ? "Remove das vendas"
                       : "Cancelamento indisponível"
                 }
                 enabled={canCancel}
@@ -817,6 +813,7 @@ type EditableOrderLine = {
   key: string;
   productId: number;
   quantity: number;
+  unitPrice: number;
   selectedVariantId?: number;
   selectedVariantIds: number[];
   selectedVariantName?: string | null;
@@ -839,11 +836,17 @@ function EditOrderModal({
       selectedVariantId?: number;
       selectedVariantIds?: number[];
     }[],
-    clienteCpf: string,
+    billing: {
+      customerName?: string;
+      customerPhoneNumber?: string;
+      customerTeam?: string;
+    },
     observation?: string,
   ) => void;
 }) {
-  const [cpf, setCpf] = useState(order.client.cpf);
+  const [customerName, setCustomerName] = useState(order.customerName ?? "");
+  const [customerPhoneNumber, setCustomerPhoneNumber] = useState(order.customerPhoneNumber ?? "");
+  const [customerTeam, setCustomerTeam] = useState(order.customerTeam ?? "");
   const [search, setSearch] = useState("");
   const [observation, setObservation] = useState(order.observation ?? "");
   const [choosingVariantFor, setChoosingVariantFor] = useState<number | null>(null);
@@ -853,6 +856,7 @@ function EditOrderModal({
       key: `current-${index}`,
       productId: item.productId,
       quantity: item.quantity,
+      unitPrice: item.unitPrice,
       selectedVariantId: item.selectedVariantId ?? undefined,
       selectedVariantIds: selectedVariantIdsForItem(item),
       selectedVariantName: item.selectedVariantName,
@@ -861,39 +865,13 @@ function EditOrderModal({
   );
   const productsQuery = useQuery({
     queryKey: ["products", "order-edit"],
-    queryFn: () => getProducts({ size: 500, sort: "name,asc" }),
+    queryFn: () => getAllProducts({ sort: "name,asc" }),
   });
   const products = useMemo(() => {
-    const availableProducts = productsQuery.data?.content ?? [];
-    const productIds = new Set(availableProducts.map((product) => product.id));
-    const missingCurrentProducts = Array.from(
-      new Map(
-        order.items
-          .filter((item) => !productIds.has(item.productId))
-          .map((item) => [
-            item.productId,
-            {
-              id: item.productId,
-              name: item.productName,
-              price: item.unitPrice,
-              icon: "GENERAL" as const,
-              stockQuantity: 0,
-              hasVariants: selectedVariantIdsForItem(item).length > 0,
-              variantType: selectedVariantIdsForItem(item).length > 0 ? "Opção" : null,
-              variantSelectionRequired: selectedVariantIdsForItem(item).length > 0,
-              variantSelectionMode:
-                selectedVariantIdsForItem(item).length > 1 ? "MULTIPLE" : "SINGLE",
-              variants: selectedVariantIdsForItem(item).map((variantId, variantIndex) => ({
-                id: variantId,
-                name: selectedVariantNamesForItem(item)[variantIndex] ?? "Opção selecionada",
-                available: true,
-              })),
-            },
-          ]),
-      ).values(),
-    ) satisfies ApiProduct[];
-    return [...availableProducts, ...missingCurrentProducts];
-  }, [order.items, productsQuery.data?.content]);
+    const catalogProducts = productsQuery.data ?? [];
+    const productIds = new Set(catalogProducts.map((product) => product.id));
+    return [...catalogProducts, ...buildMissingHistoricalProducts(order, productIds)];
+  }, [order, productsQuery.data]);
   const initialQuantity = (productId: number) =>
     order.items
       .filter((item) => item.productId === productId)
@@ -902,7 +880,14 @@ function EditOrderModal({
     lines
       .filter((line) => line.productId === productId)
       .reduce((total, line) => total + line.quantity, 0);
-  const visibleProducts = useMemo(() => fuzzyFilterByName(products, search), [products, search]);
+  const visibleProducts = useMemo(
+    () =>
+      fuzzyFilterByName(
+        products.filter((product) => product.available),
+        search,
+      ),
+    [products, search],
+  );
   const requestedItems = lines
     .filter((line) => line.quantity > 0)
     .map((line) => ({
@@ -911,11 +896,13 @@ function EditOrderModal({
       selectedVariantId: line.selectedVariantId,
       selectedVariantIds: line.selectedVariantIds,
     }));
-  const projectedTotal = requestedItems.reduce((total, item) => {
-    const product = products.find((entry) => entry.id === item.productId);
-    return total + (product?.price ?? 0) * item.quantity;
-  }, 0);
-  const cpfIsValid = isValidCPF(cpf);
+  const projectedTotal = lines.reduce((total, line) => total + line.unitPrice * line.quantity, 0);
+  const requiresBillingData = order.paymentMethod === null;
+  const billingIsValid =
+    !requiresBillingData ||
+    (customerName.trim().length >= 3 &&
+      customerPhoneNumber.replace(/\D/g, "").length > 0 &&
+      customerTeam.trim().length > 0);
   const variantsAreValid = requestedItems.every((item) => {
     const product = products.find((entry) => entry.id === item.productId);
     return (
@@ -927,8 +914,10 @@ function EditOrderModal({
 
   function adjustQuantity(line: EditableOrderLine, product: ApiProduct, difference: number) {
     const nextQuantity = line.quantity + difference;
-    const maxQuantity = product.stockQuantity + initialQuantity(product.id);
-    if (nextQuantity < 0 || requestedQuantity(product.id) + difference > maxQuantity) return;
+    const wouldIncreaseDisabledProduct =
+      !product.available &&
+      requestedQuantity(product.id) + difference > initialQuantity(product.id);
+    if (nextQuantity < 0 || wouldIncreaseDisabledProduct) return;
     setLines((current) =>
       nextQuantity === 0
         ? current.filter((entry) => entry.key !== line.key)
@@ -939,8 +928,7 @@ function EditOrderModal({
   }
 
   function addLine(product: ApiProduct, selectedVariantIds: number[] = []) {
-    const maxQuantity = product.stockQuantity + initialQuantity(product.id);
-    if (requestedQuantity(product.id) >= maxQuantity) return;
+    if (!product.available) return;
     const normalizedIds =
       product.variantSelectionMode === "MULTIPLE"
         ? selectedVariantIds
@@ -954,6 +942,7 @@ function EditOrderModal({
         key: `new-${product.id}-${normalizedIds.join("-") || "base"}-${current.length}`,
         productId: product.id,
         quantity: 1,
+        unitPrice: findHistoricalUnitPrice(order, product.id, normalizedIds) ?? product.price,
         selectedVariantId: normalizedIds[0],
         selectedVariantIds: normalizedIds,
         selectedVariantName: selectedVariants[0]?.name,
@@ -980,6 +969,7 @@ function EditOrderModal({
         : selectedVariantIds.slice(0, 1);
     const selectedVariants =
       product?.variants.filter((variant) => normalizedIds.includes(variant.id)) ?? [];
+    const historicalPrice = findHistoricalUnitPrice(order, line.productId, normalizedIds);
     setLines((current) =>
       current.map((entry) =>
         entry.key === line.key
@@ -989,6 +979,7 @@ function EditOrderModal({
               selectedVariantIds: normalizedIds,
               selectedVariantName: selectedVariants[0]?.name,
               selectedVariantNames: selectedVariants.map((variant) => variant.name),
+              unitPrice: historicalPrice ?? product?.price ?? entry.unitPrice,
             }
           : entry,
       ),
@@ -1014,7 +1005,7 @@ function EditOrderModal({
           <div>
             <h3 className="text-xl md:text-2xl font-black">Editar pedido #{order.id}</h3>
             <p className="text-sm text-muted-foreground">
-              Ajuste produtos ou vincule outro cliente já cadastrado.
+              Ajuste produtos e observações do pedido.
             </p>
           </div>
           <button
@@ -1034,20 +1025,42 @@ function EditOrderModal({
         )}
 
         <div className="p-5 md:p-6 space-y-5 overflow-y-auto">
-          <label className="block">
-            <span className="text-sm font-semibold mb-1.5 block">CPF do cliente</span>
-            <input
-              value={formatCPF(cpf)}
-              onChange={(event) => setCpf(event.target.value.replace(/\D/g, ""))}
-              inputMode="numeric"
-              className="input font-mono"
-            />
-            {!cpfIsValid && (
-              <span className="text-xs text-destructive font-semibold mt-1.5 block">
-                Informe um CPF com 11 dígitos.
-              </span>
-            )}
-          </label>
+          {requiresBillingData && (
+            <div className="grid gap-3 rounded-2xl border bg-muted/40 p-4 md:grid-cols-3">
+              <label className="block">
+                <span className="text-sm font-semibold mb-1.5 block">Nome</span>
+                <input
+                  value={customerName}
+                  onChange={(event) => setCustomerName(event.target.value)}
+                  className="input"
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-semibold mb-1.5 block">Telefone</span>
+                <input
+                  value={formatPhone(customerPhoneNumber)}
+                  onChange={(event) =>
+                    setCustomerPhoneNumber(event.target.value.replace(/\D/g, ""))
+                  }
+                  inputMode="tel"
+                  className="input"
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-semibold mb-1.5 block">Equipe</span>
+                <input
+                  value={customerTeam}
+                  onChange={(event) => setCustomerTeam(event.target.value)}
+                  className="input"
+                />
+              </label>
+              {!billingIsValid && (
+                <span className="text-xs text-destructive font-semibold md:col-span-3">
+                  Informe nome, telefone e equipe para manter o pedido fiado.
+                </span>
+              )}
+            </div>
+          )}
           <p className="text-xs text-muted-foreground">
             Pagamentos são alterados pela ação "Marcar como pago", separada da edição.
           </p>
@@ -1086,7 +1099,7 @@ function EditOrderModal({
                 >
                   <div className="min-w-0">
                     <p className="font-bold truncate">{product.name}</p>
-                    <p className="text-xs text-muted-foreground">{formatBRL(product.price)}</p>
+                    <p className="text-xs text-muted-foreground">{formatBRL(line.unitPrice)}</p>
                     {product.hasVariants &&
                       (product.variantSelectionMode === "MULTIPLE" ? (
                         <div className="mt-2 flex flex-wrap gap-2">
@@ -1163,8 +1176,8 @@ function EditOrderModal({
                     <button
                       type="button"
                       disabled={
-                        requestedQuantity(product.id) >=
-                          product.stockQuantity + initialQuantity(product.id) ||
+                        (!product.available &&
+                          requestedQuantity(product.id) >= initialQuantity(product.id)) ||
                         (product.hasVariants &&
                           line.selectedVariantIds.some(
                             (variantId) =>
@@ -1200,9 +1213,8 @@ function EditOrderModal({
               Adicionar produto
             </p>
             {visibleProducts.map((product) => {
-              const maxQuantity = product.stockQuantity + initialQuantity(product.id);
               const cannotAdd =
-                requestedQuantity(product.id) >= maxQuantity ||
+                !product.available ||
                 (product.hasVariants &&
                   product.variantSelectionRequired &&
                   !product.variants.some((variant) => variant.available));
@@ -1211,9 +1223,7 @@ function EditOrderModal({
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-bold truncate">{product.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatBRL(product.price)} · até {maxQuantity} no pedido
-                      </p>
+                      <p className="text-xs text-muted-foreground">{formatBRL(product.price)}</p>
                     </div>
                     <button
                       type="button"
@@ -1334,12 +1344,24 @@ function EditOrderModal({
               type="button"
               disabled={
                 pending ||
-                !cpfIsValid ||
+                !billingIsValid ||
                 !variantsAreValid ||
                 requestedItems.length === 0 ||
                 productsQuery.isError
               }
-              onClick={() => onSubmit(requestedItems, cpf, observation.trim() || undefined)}
+              onClick={() =>
+                onSubmit(
+                  requestedItems,
+                  requiresBillingData
+                    ? {
+                        customerName: customerName.trim(),
+                        customerPhoneNumber: customerPhoneNumber.replace(/\D/g, ""),
+                        customerTeam: customerTeam.trim(),
+                      }
+                    : {},
+                  observation.trim() || undefined,
+                )
+              }
               className="px-5 py-3 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-40"
             >
               {pending ? "Salvando..." : "Salvar edição"}
@@ -1403,7 +1425,7 @@ function OrderListButton({
           <Icon className="w-3 h-3" /> {config.label}
         </span>
       </div>
-      <p className="font-semibold text-sm truncate">{order.client.name}</p>
+      <p className="font-semibold text-sm truncate">{orderCustomerLabel(order)}</p>
       <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
         {timeText && (
           <span className="inline-flex items-center gap-1">
@@ -1462,13 +1484,19 @@ function OrderListPagination({
 function matchesOrderSearch(order: ApiOrder, normalizedQuery: string, digitQuery: string) {
   if (!normalizedQuery && !digitQuery) return true;
 
-  const clientName = normalizeSearchText(order.client.name);
-  const clientCpf = order.client.cpf.replace(/\D/g, "");
+  const customerName = normalizeSearchText(order.customerName ?? "");
+  const customerPhone = (order.customerPhoneNumber ?? "").replace(/\D/g, "");
+  const orderNumber = String(order.id);
 
   return (
-    (normalizedQuery.length > 0 && clientName.includes(normalizedQuery)) ||
-    (digitQuery.length > 0 && clientCpf.includes(digitQuery))
+    (normalizedQuery.length > 0 && customerName.includes(normalizedQuery)) ||
+    (digitQuery.length > 0 && customerPhone.includes(digitQuery)) ||
+    (digitQuery.length > 0 && orderNumber.includes(digitQuery))
   );
+}
+
+function orderCustomerLabel(order: ApiOrder) {
+  return order.customerName?.trim() || `Pedido #${order.id}`;
 }
 
 function selectedVariantIdsForItem(item: ApiOrder["items"][number]) {
@@ -1487,6 +1515,74 @@ function selectedVariantNamesForItem(item: ApiOrder["items"][number]) {
 
 function isActiveOrder(order: ApiOrder) {
   return order.status === "PENDING" || order.status === "READY_FOR_PICKUP";
+}
+
+async function getOrdersForDetails(mode: OrderDetailsMode) {
+  if (mode === "all") {
+    return getAllOrders({ sort: "orderTime,desc" });
+  }
+
+  const [pending, ready] = await Promise.all([
+    getAllOrders({ status: "PENDING", sort: "orderTime,desc" }),
+    getAllOrders({ status: "READY_FOR_PICKUP", sort: "orderTime,desc" }),
+  ]);
+  return [...pending, ...ready].sort(
+    (first, second) => new Date(second.orderTime).getTime() - new Date(first.orderTime).getTime(),
+  );
+}
+
+function buildMissingHistoricalProducts(order: ApiOrder, knownProductIds: Set<number>) {
+  const missingProducts = new Map<number, ApiProduct>();
+
+  order.items.forEach((item) => {
+    if (knownProductIds.has(item.productId)) return;
+
+    const variantIds = selectedVariantIdsForItem(item);
+    const variantNames = selectedVariantNamesForItem(item);
+    const existing = missingProducts.get(item.productId);
+    const variants = existing?.variants ? [...existing.variants] : [];
+    variantIds.forEach((variantId, index) => {
+      if (variants.some((variant) => variant.id === variantId)) return;
+      variants.push({
+        id: variantId,
+        name: variantNames[index] ?? "Opção selecionada",
+        available: false,
+      });
+    });
+
+    const hasVariants = variants.length > 0;
+    missingProducts.set(item.productId, {
+      id: item.productId,
+      name: existing?.name ?? item.productName,
+      price: existing?.price ?? item.unitPrice,
+      icon: "GENERAL",
+      available: false,
+      hasVariants,
+      variantType: hasVariants ? "Opção" : null,
+      variantSelectionRequired: hasVariants,
+      variantSelectionMode:
+        variantIds.length > 1 || existing?.variantSelectionMode === "MULTIPLE"
+          ? "MULTIPLE"
+          : "SINGLE",
+      variants,
+    });
+  });
+
+  return [...missingProducts.values()];
+}
+
+function findHistoricalUnitPrice(order: ApiOrder, productId: number, selectedVariantIds: number[]) {
+  return order.items.find(
+    (item) =>
+      item.productId === productId && sameIds(selectedVariantIdsForItem(item), selectedVariantIds),
+  )?.unitPrice;
+}
+
+function sameIds(first: number[], second: number[]) {
+  if (first.length !== second.length) return false;
+  const normalizedFirst = [...first].sort((a, b) => a - b);
+  const normalizedSecond = [...second].sort((a, b) => a - b);
+  return normalizedFirst.every((value, index) => value === normalizedSecond[index]);
 }
 
 function orderElapsedText(order: ApiOrder) {
@@ -1543,19 +1639,6 @@ function paymentStatusLabel(order: ApiOrder) {
   return `Pago - ${paymentLabel(order.paymentMethod)}`;
 }
 
-async function fetchAllOrdersForExport() {
-  const pageSize = 1000;
-  const firstPage = await getOrders({ page: 0, size: pageSize, sort: "orderTime,desc" });
-  if (firstPage.totalPages <= 1) return firstPage.content;
-
-  const remainingPages = await Promise.all(
-    Array.from({ length: firstPage.totalPages - 1 }, (_, index) =>
-      getOrders({ page: index + 1, size: pageSize, sort: "orderTime,desc" }),
-    ),
-  );
-  return [firstPage, ...remainingPages].flatMap((page) => page.content);
-}
-
 function exportOrdersCsv(orders: ApiOrder[]) {
   if (typeof window === "undefined" || orders.length === 0) return;
 
@@ -1563,8 +1646,7 @@ function exportOrdersCsv(orders: ApiOrder[]) {
     [
       "Pedido",
       "Data do pedido",
-      "Cliente",
-      "CPF",
+      "Pessoa",
       "Equipe",
       "Telefone",
       "Status do pedido",
@@ -1582,10 +1664,9 @@ function exportOrdersCsv(orders: ApiOrder[]) {
     ...orders.map((order) => [
       `#${order.id}`,
       formatCsvDateTime(order.orderTime),
-      order.client.name,
-      formatCPF(order.client.cpf),
-      order.client.team || "Nao informada",
-      order.client.phoneNumber ? formatPhone(order.client.phoneNumber) : "Nao informado",
+      order.customerName ?? "Pedido sem fiado",
+      order.customerTeam ?? "Nao informada",
+      order.customerPhoneNumber ? formatPhone(order.customerPhoneNumber) : "Nao informado",
       statusConfig[order.status].label,
       paymentStatusText(order.paymentStatus),
       paymentLabel(order.paymentMethod),
@@ -1632,17 +1713,13 @@ function paymentStatusText(status: ApiOrder["paymentStatus"]) {
 }
 
 function escapeCsvCell(value: string) {
-  return `"${value.replace(/"/g, '""')}"`;
+  const safeValue = /^[=+\-@]/.test(value.trimStart()) ? `'${value}` : value;
+  return `"${safeValue.replace(/"/g, '""')}"`;
 }
 
 function actionError(error: unknown, fallback: string) {
   if (error instanceof ApiError) {
-    try {
-      const detail = (JSON.parse(error.message) as { detail?: string }).detail;
-      if (detail) return detail;
-    } catch {
-      if (error.status === 409) return "Esta ação não é permitida no estado atual do pedido.";
-    }
+    return error.message || fallback;
   }
   return fallback;
 }

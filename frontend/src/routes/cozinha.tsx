@@ -43,7 +43,7 @@ import {
 } from "@/websocket/websocket-events";
 
 export const Route = createFileRoute("/cozinha")({
-  head: () => ({ meta: [{ title: "Cozinha — McDomine's" }] }),
+  head: () => ({ meta: [{ title: "Cozinha — Sistema de Pedidos" }] }),
   component: KitchenPage,
 });
 
@@ -113,8 +113,8 @@ function KitchenPage() {
   const { status } = useWebSocketStatus();
 
   const refreshOrders = useCallback(async () => {
-    const page = await getKitchenPendingOrders();
-    setOrders(sortOrders(page.content.map(mapApiOrder)));
+    const pendingOrders = await getKitchenPendingOrders();
+    setOrders(sortOrders(pendingOrders.map(mapApiOrder)));
   }, []);
 
   const loadOrders = useCallback(async () => {
@@ -503,7 +503,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 function mapApiOrder(order: ApiOrder): KitchenQueueOrder {
   return {
     id: order.id,
-    customerName: order.client?.name || "Cliente",
+    customerName: order.customerName || `Pedido #${order.id}`,
     createdAt: new Date(order.orderTime).getTime(),
     status: order.status,
     paymentStatus: order.paymentStatus,

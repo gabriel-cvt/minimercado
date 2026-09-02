@@ -11,11 +11,9 @@ import java.util.List;
 public class OrderMapper {
 
     private final OrderItemMapper orderItemMapper;
-    private final ClientMapper clientMapper;
 
-    public OrderMapper(OrderItemMapper orderItemMapper, ClientMapper clientMapper) {
+    public OrderMapper(OrderItemMapper orderItemMapper) {
         this.orderItemMapper = orderItemMapper;
-        this.clientMapper = clientMapper;
     }
 
     public OrderResponseDTO toResponse(Order order) {
@@ -37,8 +35,10 @@ public class OrderMapper {
                 order.getStatus(),
                 order.getPaymentStatus(),
                 items,
-                clientMapper.toResponse(order.getClient()),
                 order.getPaymentMethod(),
+                order.getCustomerName(),
+                order.getCustomerPhoneNumber(),
+                order.getCustomerTeam(),
                 order.getTotalValue(),
                 order.getObservation()
         );

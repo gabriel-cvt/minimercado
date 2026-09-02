@@ -15,14 +15,12 @@ import com.minimercado.backend.enums.PaymentMethod;
 import com.minimercado.backend.enums.PaymentStatus;
 import com.minimercado.backend.enums.ProductVariantSelectionMode;
 import com.minimercado.backend.mapper.OrderMapper;
-import com.minimercado.backend.model.Client;
 import com.minimercado.backend.model.Order;
 import com.minimercado.backend.model.OrderItem;
 import com.minimercado.backend.model.Product;
 import com.minimercado.backend.model.ProductVariant;
 import com.minimercado.backend.repository.OrderRepository;
 import com.minimercado.backend.repository.ProductRepository;
-import com.minimercado.backend.service.client.ClientService;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
@@ -48,7 +46,6 @@ import java.util.stream.Collectors;
 public class OrderServiceImpl implements OrderService{
 
     private final OrderRepository orderRepository;
-    private final ClientService clientService;
     private final ProductRepository productRepository;
     private final OrderMapper mapper;
     private final ApplicationEventPublisher eventPublisher;
@@ -65,22 +62,13 @@ public class OrderServiceImpl implements OrderService{
     public Page<OrderResponseDTO> list(
             OrderStatus status,
             PaymentStatus paymentStatus,
-            String clientCpf,
             LocalDateTime from,
             LocalDateTime to,
             Pageable pageable) {
         return orderRepository.findAll(
-                        buildSpecification(status, paymentStatus, clientCpf, from, to),
+                        buildSpecification(status, paymentStatus, from, to),
                         pageable
                 )
-                .map(mapper::toResponse);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public Page<OrderResponseDTO> getFromClient(String clientCpf, Pageable pageable) {
-        return orderRepository
-                .findByClientCpf(clientCpf, pageable)
                 .map(mapper::toResponse);
     }
 
@@ -89,13 +77,23 @@ public class OrderServiceImpl implements OrderService{
     public OrderResponseDTO create(OrderPostDTO data) {
         Order order = new Order();
         order.setOrderTime(LocalDateTime.now(clock));
-        Client client = clientService.findEntityByCpf(data.clienteCpf());
-        order.setClient(client);
 
         order.setItems(buildOrderItems(data.items(), order, true));
-        decreaseStock(order.getItems());
         order.setPaymentMethod(data.paymentMethod());
+        applyCustomerBillingData(
+                order,
+                data.customerName(),
+                data.customerPhoneNumber(),
+                data.customerTeam()
+        );
         order.setObservation(normalizeObservation(data.observation()));
+        if (Boolean.TRUE.equals(data.confirmPayment())) {
+            if (order.getPaymentMethod() == null) {
+                throw new IllegalArgumentException("Informe o metodo de pagamento para confirmar o recebimento");
+            }
+            order.setPaymentStatus(PaymentStatus.PAID);
+            order.setPaidAt(LocalDateTime.now(clock));
+        }
         order.calculateTotal();
         
         Order savedOrder = orderRepository.save(order);
@@ -120,17 +118,19 @@ public class OrderServiceImpl implements OrderService{
         }
 
         OrderStatus previousStatus = order.getStatus();
-        Client client = clientService.findEntityByCpf(data.clienteCpf());
-        if (!order.getClient().getId().equals(client.getId())) {
-            order.setClient(client);
-        }
 
         if (data.paymentMethod() != null) {
             order.setPaymentMethod(data.paymentMethod());
         }
+        applyCustomerBillingData(
+                order,
+                data.customerName(),
+                data.customerPhoneNumber(),
+                data.customerTeam()
+        );
         order.setObservation(normalizeObservation(data.observation()));
 
-        applyStockChangesForUpdate(order, data.items());
+        validateProductsAvailableForUpdate(order, data.items());
         List<OrderItem> updatedItems = buildOrderItems(data.items(), order, false);
 
         order.getItems().clear();
@@ -172,7 +172,6 @@ public class OrderServiceImpl implements OrderService{
         }
 
         OrderStatus previousStatus = order.getStatus();
-        increaseStock(order.getItems());
         order.setStatus(OrderStatus.CANCELLED);
         order.setPaymentStatus(PaymentStatus.CANCELLED);
         order.setCancelledAt(LocalDateTime.now(clock));
@@ -270,8 +269,8 @@ public class OrderServiceImpl implements OrderService{
 
     private Product findOrderableProductById(Long id) {
         Product product = findProductById(id);
-        if (Boolean.FALSE.equals(product.getActive())) {
-            throw new IllegalStateException("Produtos removidos do catalogo nao podem ser adicionados a pedidos");
+        if (Boolean.FALSE.equals(product.getAvailable())) {
+            throw new IllegalStateException("Produtos desabilitados nao podem ser adicionados a pedidos");
         }
         return product;
     }
@@ -304,14 +303,31 @@ public class OrderServiceImpl implements OrderService{
                                     remainingReservedVariants
                             )
                     );
-                    return new OrderItem(
+                    OrderItem nextItem = new OrderItem(
                             product,
                             order,
                             itemDto.quantity(),
                             selectedVariants
                     );
+                    currentItems.stream()
+                            .filter(current -> current.getProduct().getId().equals(product.getId()))
+                            .filter(current -> current.selectedVariantIdsOrLegacy().equals(
+                                    nextItem.selectedVariantIdsOrLegacy()
+                            ))
+                            .findFirst()
+                            .ifPresent(current -> preserveItemSnapshot(current, nextItem));
+                    return nextItem;
                 })
                 .toList());
+    }
+
+    private void preserveItemSnapshot(OrderItem current, OrderItem next) {
+        next.setProductName(current.getProductName());
+        next.setUnitPrice(current.getUnitPrice());
+        next.setSelectedVariantId(current.getSelectedVariantId());
+        next.setSelectedVariantName(current.getSelectedVariantName());
+        next.setSelectedVariantNames(current.getSelectedVariantNames());
+        next.setSelectedVariantIds(new ArrayList<>(current.selectedVariantIdsOrLegacy()));
     }
 
     private List<ProductVariant> resolveSelectedVariants(Product product, OrderItemRequestDTO itemDto) {
@@ -360,7 +376,7 @@ public class OrderServiceImpl implements OrderService{
         if (itemDto.selectedVariantId() != null) {
             selectedVariantIds.add(itemDto.selectedVariantId());
         }
-        return new ArrayList<>(selectedVariantIds);
+        return selectedVariantIds.stream().sorted().toList();
     }
 
     private void validateVariantAvailability(
@@ -388,34 +404,64 @@ public class OrderServiceImpl implements OrderService{
         return observation == null || observation.isBlank() ? null : observation.trim();
     }
 
-    private void decreaseStock(List<OrderItem> items) {
-        items.forEach(item -> item.getProduct().decreaseStock(item.getQuantity()));
+    private void applyCustomerBillingData(
+            Order order,
+            String customerName,
+            String customerPhoneNumber,
+            String customerTeam) {
+        boolean isCreditOrder = order.getPaymentMethod() == null;
+
+        if (!isCreditOrder) {
+            order.setCustomerName(null);
+            order.setCustomerPhoneNumber(null);
+            order.setCustomerTeam(null);
+            return;
+        }
+
+        String normalizedName = normalizeRequiredBillingField(
+                customerName,
+                "Informe o nome da pessoa para pedidos fiados"
+        );
+        String normalizedPhone = normalizePhoneNumber(customerPhoneNumber);
+        if (normalizedPhone == null) {
+            throw new IllegalArgumentException("Informe o telefone da pessoa para pedidos fiados");
+        }
+        String normalizedTeam = normalizeRequiredBillingField(
+                customerTeam,
+                "Informe a equipe da pessoa para pedidos fiados"
+        );
+
+        order.setCustomerName(normalizedName);
+        order.setCustomerPhoneNumber(normalizedPhone);
+        order.setCustomerTeam(normalizedTeam);
     }
 
-    private void increaseStock(List<OrderItem> items) {
-        items.forEach(item -> item.getProduct().increaseStock(item.getQuantity()));
+    private String normalizeRequiredBillingField(String value, String message) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(message);
+        }
+        return value.trim();
     }
 
-    private void applyStockChangesForUpdate(Order order, List<OrderItemRequestDTO> requestedItems) {
+    private String normalizePhoneNumber(String phoneNumber) {
+        if (phoneNumber == null || phoneNumber.isBlank()) {
+            return null;
+        }
+        String digits = phoneNumber.replaceAll("\\D", "");
+        return digits.isBlank() ? null : digits;
+    }
+
+    private void validateProductsAvailableForUpdate(Order order, List<OrderItemRequestDTO> requestedItems) {
         Map<Long, Integer> currentQuantities = groupCurrentItemQuantities(order.getItems());
         Map<Long, Integer> requestedQuantities = groupRequestedItemQuantities(requestedItems);
 
         requestedQuantities.forEach((productId, requestedQuantity) -> {
             int currentQuantity = currentQuantities.getOrDefault(productId, 0);
-            int quantityDifference = requestedQuantity - currentQuantity;
-
-            if (quantityDifference > 0) {
-                findOrderableProductById(productId).decreaseStock(quantityDifference);
-            }
-
-            if (quantityDifference < 0) {
-                findProductById(productId).increaseStock(Math.abs(quantityDifference));
-            }
-        });
-
-        currentQuantities.forEach((productId, currentQuantity) -> {
-            if (!requestedQuantities.containsKey(productId)) {
-                findProductById(productId).increaseStock(currentQuantity);
+            Product product = findProductById(productId);
+            if (Boolean.FALSE.equals(product.getAvailable()) && requestedQuantity > currentQuantity) {
+                throw new IllegalStateException(
+                        "O produto " + product.getName() + " esta desabilitado para novas vendas"
+                );
             }
         });
     }
@@ -485,7 +531,6 @@ public class OrderServiceImpl implements OrderService{
     private Specification<Order> buildSpecification(
             OrderStatus status,
             PaymentStatus paymentStatus,
-            String clientCpf,
             LocalDateTime from,
             LocalDateTime to) {
         return (root, query, criteriaBuilder) -> {
@@ -497,10 +542,6 @@ public class OrderServiceImpl implements OrderService{
 
             if (paymentStatus != null) {
                 predicates.add(criteriaBuilder.equal(root.get("paymentStatus"), paymentStatus));
-            }
-
-            if (clientCpf != null && !clientCpf.isBlank()) {
-                predicates.add(criteriaBuilder.equal(root.get("client").get("cpf"), clientCpf));
             }
 
             if (from != null) {

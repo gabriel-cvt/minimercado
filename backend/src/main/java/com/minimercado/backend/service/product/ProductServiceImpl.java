@@ -37,7 +37,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public ProductResponseDTO getById(Long id) {
-        return productMapper.toResponse(findActiveProductById(id));
+        return toResponse(findProductById(id));
     }
 
     @Override
@@ -45,9 +45,9 @@ public class ProductServiceImpl implements ProductService {
     public Page<ProductResponseDTO> getAll(
             Pageable pageable,
             String name,
-            Boolean inStock) {
-        return productRepository.findAll(buildSpecification(name, inStock), pageable)
-                .map(productMapper::toResponse);
+            Boolean available) {
+        return productRepository.findAll(buildSpecification(name, available), pageable)
+                .map(this::toResponse);
     }
 
     @Override
@@ -55,35 +55,25 @@ public class ProductServiceImpl implements ProductService {
     public ProductResponseDTO create(ProductPostDTO data) {
         Product product = buildProduct(data);
         Product savedProduct = productRepository.save(product);
-        return productMapper.toResponse(savedProduct);
+        return toResponse(savedProduct);
     }
 
     @Override
     @Transactional
     public ProductResponseDTO update(Long id, ProductPutDTO data) {
-        Product product = findActiveProductById(id);
+        Product product = findProductById(id);
 
         updateProductFields(product, data);
 
-        return productMapper.toResponse(productRepository.save(product));
+        return toResponse(productRepository.save(product));
     }
 
     @Override
     @Transactional
-    public void delete(Long id) {
+    public ProductResponseDTO updateAvailability(Long id, Boolean available) {
         Product product = findProductById(id);
-        product.setActive(false);
-        productRepository.save(product);
-    }
-
-    @Override
-    @Transactional
-    public ProductResponseDTO  updateStock(Long id, Integer quantityChange) {
-        Product product = findActiveProductById(id);
-
-        applyStockChange(product, quantityChange);
-
-        return productMapper.toResponse(productRepository.save(product));
+        product.setAvailable(available);
+        return toResponse(productRepository.save(product));
     }
 
     private Product findProductById(Long id) {
@@ -91,22 +81,12 @@ public class ProductServiceImpl implements ProductService {
                 .orElseThrow(EntityNotFoundException::new);
     }
 
-    private Product findActiveProductById(Long id) {
-        Product product = findProductById(id);
-        if (Boolean.FALSE.equals(product.getActive())) {
-            throw new EntityNotFoundException();
-        }
-        return product;
-    }
-
     private Product buildProduct(ProductPostDTO data) {
-        validateStockQuantity(data.stockQuantity());
-
         Product product = new Product(
-                data.name(),
+                data.name().trim(),
                 data.price(),
                 data.icon() != null ? data.icon() : ProductIcon.GENERAL,
-                data.stockQuantity()
+                data.available()
         );
         configureProduct(
                 product,
@@ -121,7 +101,11 @@ public class ProductServiceImpl implements ProductService {
 
     private void updateProductFields(Product product, ProductPutDTO data) {
         if (data.name() != null) {
-            product.setName(data.name());
+            String normalizedName = data.name().trim();
+            if (normalizedName.isEmpty()) {
+                throw new IllegalArgumentException("O nome do produto nao pode estar vazio");
+            }
+            product.setName(normalizedName);
         }
 
         if (data.price() != null) {
@@ -130,6 +114,10 @@ public class ProductServiceImpl implements ProductService {
 
         if (data.icon() != null) {
             product.setIcon(data.icon());
+        }
+
+        if (data.available() != null) {
+            product.setAvailable(data.available());
         }
 
         if (data.hasVariants() != null ||
@@ -182,11 +170,17 @@ public class ProductServiceImpl implements ProductService {
                 throw new IllegalArgumentException("Informe ao menos uma variante do produto");
             }
             validateVariantNames(variants);
+            validateExistingVariantsAreRetained(product, variants);
             product.setVariantType(variantType.trim());
             product.setVariantSelectionRequired(Boolean.TRUE.equals(variantSelectionRequired));
             product.setVariantSelectionMode(resolvedSelectionMode);
             product.replaceVariants(buildVariants(product, variants));
         } else {
+            if (product.getId() != null && !product.getVariants().isEmpty()) {
+                throw new IllegalArgumentException(
+                        "Produtos com variantes existentes devem manter a configuracao e desabilitar as opcoes"
+                );
+            }
             product.setVariantType(null);
             product.setVariantSelectionRequired(false);
             product.setVariantSelectionMode(ProductVariantSelectionMode.SINGLE);
@@ -225,29 +219,27 @@ public class ProductServiceImpl implements ProductService {
                 .toList();
     }
 
-    private void applyStockChange(Product product, Integer quantityChange) {
-        if (quantityChange == null || quantityChange == 0) {
-            throw new IllegalArgumentException("A alteracao de estoque deve ser diferente de zero");
+    private void validateExistingVariantsAreRetained(Product product, List<ProductVariantInputDTO> variants) {
+        if (product.getId() == null || product.getVariants().isEmpty()) {
+            return;
         }
-
-        int updatedStock = product.getStockQuantity() + quantityChange;
-        validateStockQuantity(updatedStock);
-        product.setStockQuantity(updatedStock);
-    }
-
-    private void validateStockQuantity(Integer stockQuantity) {
-        if (stockQuantity == null || stockQuantity < 0) {
-            throw new IllegalArgumentException("A quantidade em estoque nao pode ser negativa");
+        Set<Long> requestedIds = variants.stream()
+                .map(ProductVariantInputDTO::id)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        boolean removedExistingVariant = product.getVariants().stream()
+                .map(ProductVariant::getId)
+                .anyMatch(id -> !requestedIds.contains(id));
+        if (removedExistingVariant) {
+            throw new IllegalArgumentException("Variantes existentes devem ser desabilitadas, nao removidas");
         }
     }
 
     private Specification<Product> buildSpecification(
             String name,
-            Boolean inStock) {
+            Boolean available) {
         return (root, query, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
-
-            predicates.add(criteriaBuilder.isTrue(root.<Boolean>get("active")));
 
             if (name != null && !name.isBlank()) {
                 predicates.add(criteriaBuilder.like(
@@ -256,15 +248,15 @@ public class ProductServiceImpl implements ProductService {
                 ));
             }
 
-            if (inStock != null) {
-                if (inStock) {
-                    predicates.add(criteriaBuilder.greaterThan(root.<Integer>get("stockQuantity"), 0));
-                } else {
-                    predicates.add(criteriaBuilder.equal(root.<Integer>get("stockQuantity"), 0));
-                }
+            if (available != null) {
+                predicates.add(criteriaBuilder.equal(root.<Boolean>get("available"), available));
             }
 
             return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
         };
+    }
+
+    private ProductResponseDTO toResponse(Product product) {
+        return productMapper.toResponse(product);
     }
 }

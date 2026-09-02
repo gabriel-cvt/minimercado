@@ -3,27 +3,29 @@ import { useCallback, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { Flame, CheckCircle2 } from "lucide-react";
-import { getOrders, type ApiOrder } from "@/lib/api";
+import { getAllPublicOrders, type ApiPublicOrder } from "@/lib/api";
 import { usePublicOrdersSocket } from "@/websocket/websocket-hooks";
 import type { OrderRealtimeEvent } from "@/websocket/websocket-types";
+import { useBranding } from "@/branding/branding";
+import { BrandLogo } from "@/branding/BrandLogo";
 
 export const Route = createFileRoute("/painel")({
-  head: () => ({ meta: [{ title: "Painel de Pedidos - McDomine's" }] }),
+  head: () => ({ meta: [{ title: "Painel de Pedidos — Sistema de Pedidos" }] }),
   component: DisplayPage,
 });
 
-const DISPLAY_PAGE_SIZE = 500;
 const PUBLIC_ORDERS_QUERY_KEY = ["orders", "public"] as const;
 
 async function getDisplayOrders() {
   const [preparing, ready] = await Promise.all([
-    getOrders({ status: "PENDING", size: DISPLAY_PAGE_SIZE, sort: "orderTime,asc" }),
-    getOrders({ status: "READY_FOR_PICKUP", size: DISPLAY_PAGE_SIZE, sort: "readyAt,desc" }),
+    getAllPublicOrders({ status: "PENDING", sort: "orderTime,asc" }),
+    getAllPublicOrders({ status: "READY_FOR_PICKUP", sort: "readyAt,desc" }),
   ]);
-  return { preparing: preparing.content, ready: ready.content };
+  return { preparing, ready };
 }
 
 function DisplayPage() {
+  const branding = useBranding();
   const queryClient = useQueryClient();
   const [time, setTime] = useState(new Date());
   const ordersQuery = useQuery({
@@ -38,26 +40,29 @@ function DisplayPage() {
     return () => clearInterval(timer);
   }, []);
 
-  const handlePublicOrderEvent = useCallback((event: OrderRealtimeEvent) => {
-    queryClient.setQueryData<Awaited<ReturnType<typeof getDisplayOrders>>>(
-      PUBLIC_ORDERS_QUERY_KEY,
-      (current) => {
-        if (!current || !event.orderId) return current;
+  const handlePublicOrderEvent = useCallback(
+    (event: OrderRealtimeEvent) => {
+      queryClient.setQueryData<Awaited<ReturnType<typeof getDisplayOrders>>>(
+        PUBLIC_ORDERS_QUERY_KEY,
+        (current) => {
+          if (!current || !event.orderId) return current;
 
-        return {
-          preparing:
-            event.status && event.status !== "PENDING"
-              ? current.preparing.filter((order) => order.id !== event.orderId)
-              : current.preparing,
-          ready:
-            event.status && event.status !== "READY_FOR_PICKUP"
-              ? current.ready.filter((order) => order.id !== event.orderId)
-              : current.ready,
-        };
-      },
-    );
-    void queryClient.invalidateQueries({ queryKey: PUBLIC_ORDERS_QUERY_KEY });
-  }, [queryClient]);
+          return {
+            preparing:
+              event.status && event.status !== "PENDING"
+                ? current.preparing.filter((order) => order.id !== event.orderId)
+                : current.preparing,
+            ready:
+              event.status && event.status !== "READY_FOR_PICKUP"
+                ? current.ready.filter((order) => order.id !== event.orderId)
+                : current.ready,
+          };
+        },
+      );
+      void queryClient.invalidateQueries({ queryKey: PUBLIC_ORDERS_QUERY_KEY });
+    },
+    [queryClient],
+  );
   usePublicOrdersSocket(handlePublicOrderEvent);
 
   const preparing = (ordersQuery.data?.preparing ?? []).filter(
@@ -66,28 +71,27 @@ function DisplayPage() {
   const ready = (ordersQuery.data?.ready ?? []).filter(
     (order) =>
       order.status === "READY_FOR_PICKUP" &&
-      (order.readyAt === null || time.getTime() - new Date(order.readyAt).getTime() < 300_000),
+      order.readyAt !== null &&
+      time.getTime() - new Date(order.readyAt).getTime() < 300_000,
   );
 
   return (
     <div className="min-h-screen bg-foreground text-background">
       <header className="px-8 py-6 border-b border-white/10 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-yellow flex items-center justify-center shadow-glow">
-            <span className="text-4xl font-black text-primary leading-none">M</span>
-          </div>
+          <BrandLogo compact inverse />
           <div>
             <h1 className="text-3xl md:text-4xl font-black tracking-tight">
-              Painel de Pedidos McDomine's
+              {branding.panelTitle}
             </h1>
-            <p className="text-white/60 font-medium">Veja quando seu pedido estiver pronto</p>
+            <p className="text-background/60 font-medium">{branding.panelSubtitle}</p>
           </div>
         </div>
         <div className="text-right">
           <p className="text-4xl md:text-5xl font-black tabular-nums">
             {time.toLocaleTimeString("pt-BR").slice(0, 5)}
           </p>
-          <p className="text-sm text-white/60">
+          <p className="text-sm text-background/60">
             {time.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}
           </p>
         </div>
@@ -98,7 +102,7 @@ function DisplayPage() {
           Não foi possível atualizar o painel.
         </p>
       )}
-      <div className="grid md:grid-cols-2 gap-px bg-white/10 min-h-[calc(100vh-110px)]">
+      <div className="grid md:grid-cols-2 gap-px bg-background/10 min-h-[calc(100vh-110px)]">
         <Column
           title="Em preparo"
           tone="preparing"
@@ -124,7 +128,7 @@ function Column({
 }: {
   title: string;
   tone: "preparing" | "ready";
-  orders: ApiOrder[];
+  orders: ApiPublicOrder[];
   icon: React.ReactNode;
 }) {
   const isReady = tone === "ready";
@@ -138,7 +142,7 @@ function Column({
         <span className="ml-auto text-2xl font-black opacity-60">{orders.length}</span>
       </div>
       {orders.length === 0 ? (
-        <div className="text-white/30 text-center py-20 font-bold text-xl">Nenhum pedido</div>
+        <div className="text-background/30 text-center py-20 font-bold text-xl">Nenhum pedido</div>
       ) : (
         <div
           className={`grid ${isReady ? "grid-cols-2 md:grid-cols-3" : "grid-cols-2 md:grid-cols-3 lg:grid-cols-4"} gap-4`}
@@ -152,7 +156,7 @@ function Column({
                 animate={{ scale: 1, opacity: 1, rotateY: 0 }}
                 exit={{ scale: 0.7, opacity: 0 }}
                 transition={{ type: "spring", stiffness: 240, damping: 20 }}
-                className={`aspect-[4/3] rounded-3xl flex items-center justify-center font-black ${isReady ? "bg-gradient-to-br from-status-finished to-emerald-600 text-white shadow-glow animate-pulse-ready" : "bg-gradient-to-br from-status-preparing to-amber-500 text-foreground"}`}
+                className={`aspect-[4/3] rounded-3xl flex items-center justify-center font-black ${isReady ? "bg-gradient-to-br from-status-finished to-chart-2 text-background shadow-glow animate-pulse-ready" : "bg-gradient-to-br from-status-preparing to-secondary text-foreground"}`}
               >
                 <span className="text-4xl md:text-6xl tabular-nums">#{order.id}</span>
               </motion.div>

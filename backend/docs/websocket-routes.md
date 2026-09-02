@@ -9,7 +9,7 @@ O backend usa Spring WebSocket com STOMP e SockJS.
 - Endpoint de conexão: `/ws`
 - Broker habilitado para assinaturas: `/topic`
 - Prefixo reservado para mensagens enviadas pelo cliente à aplicação: `/app`
-- Origens permitidas: qualquer origem (`*`)
+- Origens permitidas: todas (`APP_CORS_ALLOWED_ORIGINS=*`)
 - Não há handlers de entrada com `@MessageMapping` no código atual. Portanto, os clientes apenas assinam tópicos e recebem eventos publicados pelo backend.
 
 ## Como conectar
@@ -23,15 +23,18 @@ O cliente deve abrir a conexão STOMP/SockJS em:
 Exemplo conceitual usando SockJS + STOMP:
 
 ```javascript
-const socket = new SockJS("http://localhost:8080/ws");
+const socket = new SockJS("http://IP_DA_MAQUINA:8080/ws");
 const stompClient = Stomp.over(socket);
 
-stompClient.connect({}, () => {
+stompClient.connect({ "X-Admin-Key": "sua-chave" }, () => {
   stompClient.subscribe("/topic/kitchen/orders", (message) => {
     console.log(JSON.parse(message.body));
   });
 });
 ```
+
+`/topic/orders/public` é público. As assinaturas de `/topic/orders`, `/topic/kitchen/orders` e
+`/topic/pickup/orders` exigem a chave operacional no frame STOMP `CONNECT`.
 
 ## Tópicos disponíveis
 
@@ -199,7 +202,6 @@ As seguintes consultas não publicam eventos WebSocket no código atual:
 
 - `GET /api/orders`: consulta pedidos, sem evento WebSocket.
 - `GET /api/orders/{id}`: consulta pedido, sem evento WebSocket.
-- `GET /api/orders/client/{cpf}`: consulta pedidos por cliente, sem evento WebSocket.
 
 ## Resumo
 

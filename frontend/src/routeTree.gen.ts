@@ -14,6 +14,7 @@ import { Route as PainelRouteImport } from './routes/painel'
 import { Route as OrdersRouteImport } from './routes/orders'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as CozinhaRouteImport } from './routes/cozinha'
+import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as IndexRouteImport } from './routes/index'
 
 const ProdutosRoute = ProdutosRouteImport.update({
@@ -41,6 +42,11 @@ const CozinhaRoute = CozinhaRouteImport.update({
   path: '/cozinha',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ConfiguracoesRoute = ConfiguracoesRouteImport.update({
+  id: '/configuracoes',
+  path: '/configuracoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -49,6 +55,7 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/configuracoes': typeof ConfiguracoesRoute
   '/cozinha': typeof CozinhaRoute
   '/dashboard': typeof DashboardRoute
   '/orders': typeof OrdersRoute
@@ -57,6 +64,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/configuracoes': typeof ConfiguracoesRoute
   '/cozinha': typeof CozinhaRoute
   '/dashboard': typeof DashboardRoute
   '/orders': typeof OrdersRoute
@@ -66,6 +74,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/configuracoes': typeof ConfiguracoesRoute
   '/cozinha': typeof CozinhaRoute
   '/dashboard': typeof DashboardRoute
   '/orders': typeof OrdersRoute
@@ -76,16 +85,25 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/configuracoes'
     | '/cozinha'
     | '/dashboard'
     | '/orders'
     | '/painel'
     | '/produtos'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/cozinha' | '/dashboard' | '/orders' | '/painel' | '/produtos'
+  to:
+    | '/'
+    | '/configuracoes'
+    | '/cozinha'
+    | '/dashboard'
+    | '/orders'
+    | '/painel'
+    | '/produtos'
   id:
     | '__root__'
     | '/'
+    | '/configuracoes'
     | '/cozinha'
     | '/dashboard'
     | '/orders'
@@ -95,6 +113,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ConfiguracoesRoute: typeof ConfiguracoesRoute
   CozinhaRoute: typeof CozinhaRoute
   DashboardRoute: typeof DashboardRoute
   OrdersRoute: typeof OrdersRoute
@@ -139,6 +158,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CozinhaRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/configuracoes': {
+      id: '/configuracoes'
+      path: '/configuracoes'
+      fullPath: '/configuracoes'
+      preLoaderRoute: typeof ConfiguracoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -151,6 +177,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ConfiguracoesRoute: ConfiguracoesRoute,
   CozinhaRoute: CozinhaRoute,
   DashboardRoute: DashboardRoute,
   OrdersRoute: OrdersRoute,

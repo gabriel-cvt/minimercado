@@ -13,12 +13,38 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.math.BigDecimal;
 
 
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecificationExecutor<Order> {
 
-    Page<Order> findByClientCpf(String clientCpf, Pageable pageable);
+    interface PreparationTimeProjection {
+        LocalDateTime getOrderTime();
+        LocalDateTime getReadyAt();
+    }
+
+    interface PaymentMethodProjection {
+        com.minimercado.backend.enums.PaymentMethod getPaymentMethod();
+        Long getOrdersCount();
+    }
+
+    interface HourlyOrdersProjection {
+        Integer getHour();
+        Long getOrdersCount();
+    }
+
+    interface StatusProjection {
+        OrderStatus getStatus();
+        Long getOrdersCount();
+    }
+
+    interface TopProductProjection {
+        Long getProductId();
+        String getName();
+        Long getQuantitySold();
+        BigDecimal getTotalValue();
+    }
 
     long countByOrderTimeBetween(LocalDateTime from, LocalDateTime to);
 
@@ -36,13 +62,37 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
 
     List<Order> findAllByReadyAtBetween(LocalDateTime from, LocalDateTime to);
 
+    @Query("select o.orderTime as orderTime, o.readyAt as readyAt from Order o " +
+            "where o.readyAt is not null and o.status <> com.minimercado.backend.enums.OrderStatus.CANCELLED")
+    List<PreparationTimeProjection> findPreparationTimes();
+
+    @Query("select coalesce(avg(o.totalValue), 0) from Order o where o.paidAt is not null")
+    BigDecimal averagePaidTicket();
+
+    @Query("select o.paymentMethod as paymentMethod, count(o) as ordersCount from Order o " +
+            "where o.paidAt is not null and o.paymentMethod is not null group by o.paymentMethod")
+    List<PaymentMethodProjection> paymentMethodMetrics();
+
+    @Query("select hour(o.orderTime) as hour, count(o) as ordersCount from Order o " +
+            "where o.status <> com.minimercado.backend.enums.OrderStatus.CANCELLED group by hour(o.orderTime)")
+    List<HourlyOrdersProjection> hourlyOrderMetrics();
+
+    @Query("select o.status as status, count(o) as ordersCount from Order o group by o.status")
+    List<StatusProjection> statusMetrics();
+
+    @Query("select i.product.id as productId, i.product.name as name, sum(i.quantity) as quantitySold, " +
+            "sum(i.unitPrice * i.quantity) as totalValue from OrderItem i " +
+            "where i.order.status <> com.minimercado.backend.enums.OrderStatus.CANCELLED " +
+            "group by i.product.id, i.product.name order by sum(i.quantity) desc, sum(i.unitPrice * i.quantity) desc")
+    List<TopProductProjection> topProductMetrics();
+
     @Query("""
             select coalesce(sum(o.totalValue), 0)
             from #{#entityName} o
             where o.paymentStatus = :paymentStatus
               and o.paidAt between :from and :to
             """)
-    Double sumTotalValueByPaymentStatusAndPaidAtBetween(
+    BigDecimal sumTotalValueByPaymentStatusAndPaidAtBetween(
             @Param("paymentStatus") PaymentStatus paymentStatus,
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to);
@@ -52,6 +102,6 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
             from #{#entityName} o
             where o.paymentStatus = :paymentStatus
             """)
-    Double sumTotalValueByPaymentStatus(@Param("paymentStatus") PaymentStatus paymentStatus);
+    BigDecimal sumTotalValueByPaymentStatus(@Param("paymentStatus") PaymentStatus paymentStatus);
 
 }

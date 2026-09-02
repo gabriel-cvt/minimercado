@@ -19,16 +19,18 @@ import {
 import { getDashboardSummary, getOrders } from "@/lib/api";
 import { formatBRL } from "@/lib/format";
 import { useOrdersSocket } from "@/websocket/websocket-hooks";
+import { useBranding } from "@/branding/branding";
+import { BrandLogo } from "@/branding/BrandLogo";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "McDomine's — Sistema de Gerenciamento de Pedidos" },
+      { title: "Início — Sistema de Pedidos" },
       {
         name: "description",
         content: "Sistema para registrar pedidos, acompanhar a cozinha e organizar retiradas.",
       },
-      { property: "og:title", content: "McDomine's — Sistema de Gerenciamento de Pedidos" },
+      { property: "og:title", content: "Sistema de Pedidos" },
       {
         property: "og:description",
         content: "Sistema para registrar pedidos, acompanhar a cozinha e organizar retiradas.",
@@ -39,6 +41,7 @@ export const Route = createFileRoute("/")({
 });
 
 function WelcomePage() {
+  const branding = useBranding();
   const queryClient = useQueryClient();
   const summaryQuery = useQuery({
     queryKey: ["dashboard", "summary"],
@@ -76,7 +79,7 @@ function WelcomePage() {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/15 backdrop-blur text-sm font-semibold mb-6"
+              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary-foreground/15 backdrop-blur text-sm font-semibold mb-6"
             >
               <Zap className="w-4 h-4 text-accent-yellow" /> Pedidos · Cozinha · Retirada
             </motion.div>
@@ -86,17 +89,17 @@ function WelcomePage() {
               transition={{ delay: 0.1 }}
               className="text-5xl md:text-7xl font-black leading-[1.02] mb-6"
             >
-              Bem-vindo ao
+              {branding.homeTitle}
               <br />
-              <span className="text-accent-yellow">McDomine's</span>
+              <span className="text-accent-yellow">{branding.businessName}</span>
             </motion.h1>
             <motion.p
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="text-lg md:text-xl text-white/90 mb-8 font-medium max-w-xl"
+              className="text-lg md:text-xl text-primary-foreground/90 mb-8 font-medium max-w-xl"
             >
-              Registre pedidos, acompanhe a cozinha e organize a retirada em um só lugar.
+              {branding.homeDescription}
             </motion.p>
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -106,14 +109,13 @@ function WelcomePage() {
             >
               <Link
                 to="/orders"
-                className="bg-white text-primary font-bold px-6 py-4 rounded-xl shadow-elegant hover:scale-[1.03] transition-transform flex items-center gap-2"
+                className="bg-card text-primary font-bold px-6 py-4 rounded-xl shadow-elegant hover:scale-[1.03] transition-transform flex items-center gap-2"
               >
-                <ShoppingBag className="w-5 h-5" /> Fazer pedido{" "}
-                <ArrowRight className="w-4 h-4" />
+                <ShoppingBag className="w-5 h-5" /> Fazer pedido <ArrowRight className="w-4 h-4" />
               </Link>
               <Link
                 to="/painel"
-                className="bg-foreground/30 backdrop-blur text-white font-bold px-6 py-4 rounded-xl border border-white/20 hover:bg-foreground/50 transition-colors flex items-center gap-2"
+                className="bg-foreground/30 backdrop-blur text-primary-foreground font-bold px-6 py-4 rounded-xl border border-primary-foreground/20 hover:bg-foreground/50 transition-colors flex items-center gap-2"
               >
                 <Tv className="w-5 h-5" /> Ver Painel
               </Link>
@@ -143,16 +145,14 @@ function WelcomePage() {
                     className="flex justify-between text-xs font-semibold text-foreground/80"
                   >
                     <span>#{o.id}</span>
-                    <span>{o.client.name.split(" ")[0]}</span>
+                    <span>{o.customerName?.split(" ")[0] ?? `#${o.id}`}</span>
                   </div>
                 ))}
               </div>
             </FloatingCard>
             <FloatingCard delay={0.4} className="top-32 right-0 w-72" tilt={4}>
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-yellow flex items-center justify-center">
-                  <span className="text-lg font-black text-primary">M</span>
-                </div>
+                <BrandLogo compact />
                 <div className="flex-1">
                   <p className="text-xs font-bold uppercase text-muted-foreground">
                     Faturamento hoje
@@ -226,7 +226,7 @@ function WelcomePage() {
           <FeatureCard
             Icon={ShoppingBag}
             title="Gestão de Pedidos"
-            desc="Registre pedidos rapidamente com identificação por CPF e cardápio disponível."
+            desc="Registre pedidos rapidamente direto pelo cardápio disponível."
           />
           <FeatureCard
             Icon={Zap}
@@ -262,12 +262,12 @@ function WelcomePage() {
           <div className="absolute -top-20 -right-20 w-80 h-80 rounded-full bg-accent-yellow/30 blur-3xl" />
           <div className="relative">
             <h3 className="text-3xl md:text-5xl font-black mb-4">Pronto para começar?</h3>
-            <p className="text-lg text-white/90 mb-6 max-w-xl mx-auto">
+            <p className="text-lg text-primary-foreground/90 mb-6 max-w-xl mx-auto">
               Comece a registrar e acompanhar pedidos agora mesmo.
             </p>
             <Link
               to="/orders"
-              className="inline-flex items-center gap-2 bg-white text-primary font-bold px-8 py-4 rounded-xl shadow-elegant hover:scale-[1.03] transition-transform"
+              className="inline-flex items-center gap-2 bg-card text-primary font-bold px-8 py-4 rounded-xl shadow-elegant hover:scale-[1.03] transition-transform"
             >
               <ShoppingBag className="w-5 h-5" /> Fazer pedido
             </Link>
@@ -278,16 +278,14 @@ function WelcomePage() {
       <footer className="border-t bg-foreground text-background/80">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-10 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-yellow flex items-center justify-center">
-              <span className="text-2xl font-black text-primary leading-none">M</span>
-            </div>
+            <BrandLogo compact inverse />
             <div>
-              <p className="font-black text-background">McDomine's</p>
-              <p className="text-xs">Sistema de Gerenciamento de Pedidos</p>
+              <p className="font-black text-background">{branding.businessName}</p>
+              <p className="text-xs">{branding.tagline}</p>
             </div>
           </div>
           <p className="text-sm">
-            © {new Date().getFullYear()} McDomine's. Todos os direitos reservados.
+            © {new Date().getFullYear()} {branding.businessName}. {branding.footerText}
           </p>
         </div>
       </footer>

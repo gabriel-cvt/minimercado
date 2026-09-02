@@ -8,9 +8,8 @@ import org.springframework.data.domain.Pageable;
 
 public interface ProductService {
     ProductResponseDTO getById(Long id);
-    Page<ProductResponseDTO> getAll(Pageable pageable, String name, Boolean inStock);
+    Page<ProductResponseDTO> getAll(Pageable pageable, String name, Boolean available);
     ProductResponseDTO create(ProductPostDTO data);
     ProductResponseDTO update(Long id, ProductPutDTO data);
-    void delete(Long id);
-    ProductResponseDTO updateStock(Long id, Integer quantityChange);
+    ProductResponseDTO updateAvailability(Long id, Boolean available);
 }

@@ -8,7 +8,7 @@ Usage:
   python3 scripts/seed_menu_products.py --dry-run
   python3 scripts/seed_menu_products.py --create-only
 
-Edit MENU_PRODUCTS below when prices, icons, stock, or variants change.
+Edit MENU_PRODUCTS below when prices, icons, availability, or variants change.
 """
 
 from __future__ import annotations
@@ -24,15 +24,12 @@ from urllib.request import Request, urlopen
 
 
 DEFAULT_BASE_URL = "http://localhost:8080"
-DEFAULT_STOCK_QUANTITY = 100
-
-
 @dataclass(frozen=True)
 class ProductSeed:
     name: str
     price: float
     icon: str
-    stock_quantity: int = DEFAULT_STOCK_QUANTITY
+    available: bool = True
     has_variants: bool = False
     variant_type: str | None = None
     variant_selection_required: bool = False
@@ -43,7 +40,7 @@ class ProductSeed:
             "name": self.name,
             "price": self.price,
             "icon": self.icon,
-            "stockQuantity": self.stock_quantity,
+            "available": self.available,
             "hasVariants": self.has_variants,
             "variantType": self.variant_type,
             "variantSelectionRequired": self.variant_selection_required,
@@ -60,6 +57,7 @@ class ProductSeed:
             "name": self.name,
             "price": self.price,
             "icon": self.icon,
+            "available": self.available,
             "hasVariants": self.has_variants,
             "variantType": self.variant_type,
             "variantSelectionRequired": self.variant_selection_required,

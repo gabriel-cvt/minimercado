@@ -1,7 +1,6 @@
 package com.minimercado.backend;
 
 import com.minimercado.backend.config.TimeConfig;
-import com.minimercado.backend.repository.ClientRepository;
 import com.minimercado.backend.repository.OrderRepository;
 import com.minimercado.backend.repository.ProductRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -37,14 +36,10 @@ class OrderTimeZoneIntegrationTests {
     @Autowired
     private ProductRepository productRepository;
 
-    @Autowired
-    private ClientRepository clientRepository;
-
     @AfterEach
     void removeCommittedScenarioData() {
         orderRepository.deleteAll();
         productRepository.deleteAll();
-        clientRepository.deleteAll();
     }
 
     @Test
@@ -53,8 +48,7 @@ class OrderTimeZoneIntegrationTests {
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
 
         try {
-            String cpf = "88282776776";
-            long productId = createProductAndClient(cpf);
+            long productId = createProduct();
             LocalDateTime beforeCreate = LocalDateTime.now(TimeConfig.BRASILIA_ZONE).minusSeconds(1);
 
             JsonNode order = objectMapper.readTree(mockMvc.perform(post("/api/orders")
@@ -62,10 +56,9 @@ class OrderTimeZoneIntegrationTests {
                             .content("""
                                     {
                                       "items": [{ "productId": %d, "quantity": 1 }],
-                                      "clienteCpf": "%s",
                                       "paymentMethod": "PIX"
                                     }
-                                    """.formatted(productId, cpf)))
+                                    """.formatted(productId)))
                     .andExpect(status().isCreated())
                     .andReturn()
                     .getResponse()
@@ -81,26 +74,13 @@ class OrderTimeZoneIntegrationTests {
         }
     }
 
-    private long createProductAndClient(String cpf) throws Exception {
-        mockMvc.perform(post("/api/clients")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "name": "Cliente Horario",
-                                  "cpf": "%s",
-                                  "phoneNumber": "85999999999",
-                                  "team": "Minimercado"
-                                }
-                                """.formatted(cpf)))
-                .andExpect(status().isCreated());
-
+    private long createProduct() throws Exception {
         JsonNode product = objectMapper.readTree(mockMvc.perform(post("/api/products")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
                                   "name": "Produto horario",
-                                  "price": 8.00,
-                                  "stockQuantity": 10
+                                  "price": 8.00
                                 }
                                 """))
                 .andExpect(status().isCreated())

@@ -1,6 +1,5 @@
 package com.minimercado.backend.dto.order;
 
-import com.minimercado.backend.dto.client.ClientResponseDTO;
 import com.minimercado.backend.dto.orderItem.OrderItemResponseDTO;
 import com.minimercado.backend.enums.OrderStatus;
 import com.minimercado.backend.enums.PaymentMethod;
@@ -8,6 +7,7 @@ import com.minimercado.backend.enums.PaymentStatus;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.math.BigDecimal;
 
 public record OrderResponseDTO(
         Long id,
@@ -19,8 +19,10 @@ public record OrderResponseDTO(
         OrderStatus status,
         PaymentStatus paymentStatus,
         List<OrderItemResponseDTO> items,
-        ClientResponseDTO client,
         PaymentMethod paymentMethod,
-        Double totalValue,
+        String customerName,
+        String customerPhoneNumber,
+        String customerTeam,
+        BigDecimal totalValue,
         String observation
 ) {}

@@ -7,6 +7,7 @@ import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.math.BigDecimal;
 
 @Entity
 @Table(name = "order_items")
@@ -25,8 +26,10 @@ public class OrderItem {
     @ManyToOne
     @JoinColumn(name = "order_id", nullable = false)
     private Order order;
+    @Column(nullable = false)
     private Integer quantity;
-    private Double unitPrice;
+    @Column(nullable = false, precision = 12, scale = 2)
+    private BigDecimal unitPrice;
     @Column(nullable = false)
     private String productName;
     private Long selectedVariantId;
@@ -72,8 +75,8 @@ public class OrderItem {
                 : String.join(", ", safeVariants.stream().map(ProductVariant::getName).toList());
     }
 
-    public Double getSubtotal() {
-        return this.unitPrice * this.quantity;
+    public BigDecimal getSubtotal() {
+        return this.unitPrice.multiply(BigDecimal.valueOf(this.quantity));
     }
 
     public List<Long> selectedVariantIdsOrLegacy() {

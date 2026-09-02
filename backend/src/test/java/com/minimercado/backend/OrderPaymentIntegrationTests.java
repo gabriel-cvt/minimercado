@@ -30,8 +30,8 @@ class OrderPaymentIntegrationTests {
 
     @Test
     void selectedPaymentMethodKeepsOrderEditableAndCancellableUntilPaymentConfirmation() throws Exception {
-        long productId = createProductAndClient("11144477735");
-        long orderId = createOrder(productId, "11144477735", "PIX");
+        long productId = createProduct();
+        long orderId = createOrder(productId, "PIX");
 
         mockMvc.perform(get("/api/orders/{id}", orderId))
                 .andExpect(status().isOk())
@@ -44,7 +44,6 @@ class OrderPaymentIntegrationTests {
                         .content("""
                                 {
                                   "items": [{ "productId": %d, "quantity": 2 }],
-                                  "clienteCpf": "11144477735",
                                   "paymentMethod": "PIX"
                                 }
                                 """.formatted(productId)))
@@ -60,8 +59,8 @@ class OrderPaymentIntegrationTests {
 
     @Test
     void finishedOrderMayStayPendingAndBePaidAfterPickup() throws Exception {
-        long productId = createProductAndClient("52998224725");
-        long orderId = createOrder(productId, "52998224725", "DINHEIRO");
+        long productId = createProduct();
+        long orderId = createOrder(productId, "DINHEIRO");
 
         mockMvc.perform(patch("/api/orders/{id}/ready", orderId))
                 .andExpect(status().isOk());
@@ -96,19 +95,24 @@ class OrderPaymentIntegrationTests {
 
     @Test
     void orderCanBeCreatedWithPendingPaymentMethodToConfirmLater() throws Exception {
-        long productId = createProductAndClient("89314409750");
+        long productId = createProduct();
 
         JsonNode order = objectMapper.readTree(mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
                                   "items": [{ "productId": %d, "quantity": 1 }],
-                                  "clienteCpf": "89314409750"
+                                  "customerName": "Cliente Fiado",
+                                  "customerPhoneNumber": "85999999999",
+                                  "customerTeam": "Minimercado"
                                 }
                                 """.formatted(productId)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.paymentStatus").value("PENDING"))
                 .andExpect(jsonPath("$.paymentMethod").doesNotExist())
+                .andExpect(jsonPath("$.customerName").value("Cliente Fiado"))
+                .andExpect(jsonPath("$.customerPhoneNumber").value("85999999999"))
+                .andExpect(jsonPath("$.customerTeam").value("Minimercado"))
                 .andExpect(jsonPath("$.paidAt").doesNotExist())
                 .andReturn()
                 .getResponse()
@@ -129,8 +133,8 @@ class OrderPaymentIntegrationTests {
 
     @Test
     void orderCanUseCardPaymentMethod() throws Exception {
-        long productId = createProductAndClient("12345678909");
-        long orderId = createOrder(productId, "12345678909", "CARTAO");
+        long productId = createProduct();
+        long orderId = createOrder(productId, "CARTAO");
 
         mockMvc.perform(patch("/api/orders/{id}/pay", orderId))
                 .andExpect(status().isOk())
@@ -138,26 +142,32 @@ class OrderPaymentIntegrationTests {
                 .andExpect(jsonPath("$.paymentStatus").value("PAID"));
     }
 
-    private long createProductAndClient(String cpf) throws Exception {
-        mockMvc.perform(post("/api/clients")
+    @Test
+    void orderCanConfirmImmediatePaymentInCreationTransaction() throws Exception {
+        long productId = createProduct();
+
+        mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "name": "Cliente Pagamento",
-                                  "cpf": "%s",
-                                  "phoneNumber": "85999999999",
-                                  "team": "Minimercado"
+                                  "items": [{ "productId": %d, "quantity": 1 }],
+                                  "paymentMethod": "PIX",
+                                  "confirmPayment": true
                                 }
-                                """.formatted(cpf)))
-                .andExpect(status().isCreated());
+                                """.formatted(productId)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.paymentStatus").value("PAID"))
+                .andExpect(jsonPath("$.paymentMethod").value("PIX"))
+                .andExpect(jsonPath("$.paidAt").exists());
+    }
 
+    private long createProduct() throws Exception {
         JsonNode product = objectMapper.readTree(mockMvc.perform(post("/api/products")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
                                   "name": "Produto pagamento",
-                                  "price": 12.50,
-                                  "stockQuantity": 10
+                                  "price": 12.50
                                 }
                                 """))
                 .andExpect(status().isCreated())
@@ -167,16 +177,15 @@ class OrderPaymentIntegrationTests {
         return product.get("id").asLong();
     }
 
-    private long createOrder(long productId, String cpf, String paymentMethod) throws Exception {
+    private long createOrder(long productId, String paymentMethod) throws Exception {
         JsonNode order = objectMapper.readTree(mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
                                   "items": [{ "productId": %d, "quantity": 1 }],
-                                  "clienteCpf": "%s",
                                   "paymentMethod": "%s"
                                 }
-                                """.formatted(productId, cpf, paymentMethod)))
+                                """.formatted(productId, paymentMethod)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.paymentStatus").value("PENDING"))
                 .andExpect(jsonPath("$.paidAt").doesNotExist())

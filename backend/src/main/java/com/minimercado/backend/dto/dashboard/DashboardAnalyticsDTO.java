@@ -1,24 +1,27 @@
 package com.minimercado.backend.dto.dashboard;
 
 import java.util.List;
+import java.math.BigDecimal;
+import com.minimercado.backend.enums.PaymentMethod;
+import com.minimercado.backend.enums.OrderStatus;
 
 public record DashboardAnalyticsDTO(
         Double averagePreparationMinutes,
-        Double averageTicket,
+        BigDecimal averageTicket,
         List<PaymentMethodMetricDTO> paymentMethods,
         List<HourlyOrdersDTO> ordersByHour,
-        List<TopClientDTO> topClients,
+        List<StatusMetricDTO> statuses,
         List<TopProductDTO> topProducts
 ) {
-    public record PaymentMethodMetricDTO(String paymentMethod, Long ordersCount) {
+    public record PaymentMethodMetricDTO(PaymentMethod paymentMethod, Long ordersCount) {
     }
 
     public record HourlyOrdersDTO(Integer hour, Long ordersCount) {
     }
 
-    public record TopClientDTO(Long clientId, String name, String cpf, Long ordersCount, Double totalSpent) {
+    public record StatusMetricDTO(OrderStatus status, Long ordersCount) {
     }
 
-    public record TopProductDTO(Long productId, String name, Long quantitySold, Double totalValue) {
+    public record TopProductDTO(Long productId, String name, Long quantitySold, BigDecimal totalValue) {
     }
 }

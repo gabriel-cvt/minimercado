@@ -34,24 +34,25 @@ import {
   getDashboardAnalytics,
   getDashboardSummary,
   getDashboardTopProducts,
-  getOrders,
+  getAllOrders,
   markOrderPaid,
   type ApiOrder,
   type ApiPaymentMethod,
   type ApiTopProduct,
 } from "@/lib/api";
-import { formatBRL, formatCPF, formatDateTime, formatPhone } from "@/lib/format";
+import { formatBRL, formatDateTime, formatPhone } from "@/lib/format";
 import { useOrdersSocket } from "@/websocket/websocket-hooks";
+import { useBranding } from "@/branding/branding";
 
 export const Route = createFileRoute("/dashboard")({
-  head: () => ({ meta: [{ title: "Painel de Resultados - McDomine's" }] }),
+  head: () => ({ meta: [{ title: "Resultados — Sistema de Pedidos" }] }),
   component: DashboardPage,
 });
 
 const PAYMENT_COLORS: Record<string, string> = {
   PIX: "var(--chart-2)",
   Dinheiro: "var(--status-finished)",
-  "Cartão": "var(--chart-4)",
+  Cartão: "var(--chart-4)",
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -62,6 +63,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 function DashboardPage() {
+  const branding = useBranding();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [pendingTarget, setPendingTarget] = useState<PendingCustomer | null>(null);
@@ -74,13 +76,9 @@ function DashboardPage() {
     queryKey: ["dashboard", "analytics"],
     queryFn: getDashboardAnalytics,
   });
-  const ordersQuery = useQuery({
-    queryKey: ["orders", "dashboard"],
-    queryFn: () => getOrders({ size: 500, sort: "orderTime,desc" }),
-  });
   const pendingOrdersQuery = useQuery({
     queryKey: ["orders", "dashboard", "pending"],
-    queryFn: () => getOrders({ paymentStatus: "PENDING", size: 500, sort: "orderTime,asc" }),
+    queryFn: () => getAllOrders({ paymentStatus: "PENDING", sort: "orderTime,asc" }),
   });
   const refresh = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -88,20 +86,34 @@ function DashboardPage() {
   }, [queryClient]);
   useOrdersSocket(refresh);
   const paymentMutation = useMutation({
-    mutationFn: ({ orders, fallbackPaymentMethod }: PendingPaymentConfirmation) =>
-      Promise.all(
+    mutationFn: async ({ orders, fallbackPaymentMethod }: PendingPaymentConfirmation) => {
+      const results = await Promise.allSettled(
         orders.map((order) =>
           markOrderPaid(order.id, order.paymentMethod ?? fallbackPaymentMethod),
         ),
-      ),
-    onSuccess: async (paidOrders) => {
+      );
+      return {
+        paidOrders: results.flatMap((result) =>
+          result.status === "fulfilled" ? [result.value] : [],
+        ),
+        failedCount: results.filter((result) => result.status === "rejected").length,
+      };
+    },
+    onSuccess: async ({ paidOrders, failedCount }) => {
       await queryClient.invalidateQueries({ queryKey: ["orders"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      toast.success(
-        paidOrders.length === 1
-          ? "Pagamento confirmado com sucesso"
-          : `${paidOrders.length} pagamentos confirmados com sucesso`,
-      );
+      if (failedCount === 0) {
+        toast.success(
+          paidOrders.length === 1
+            ? "Pagamento confirmado com sucesso"
+            : `${paidOrders.length} pagamentos confirmados com sucesso`,
+        );
+      } else {
+        toast.error(
+          `${paidOrders.length} pagamento(s) confirmado(s) e ${failedCount} não confirmado(s). A lista foi atualizada.`,
+          { duration: Infinity },
+        );
+      }
       setPendingTarget(null);
     },
     onError: () =>
@@ -128,24 +140,13 @@ function DashboardPage() {
 
   const summary = summaryQuery.data;
   const analytics = analyticsQuery.data;
-  const orders = useMemo(() => ordersQuery.data?.content ?? [], [ordersQuery.data]);
-  const pendingOrders = useMemo(
-    () => pendingOrdersQuery.data?.content ?? [],
-    [pendingOrdersQuery.data],
+  const pendingOrders = useMemo(() => pendingOrdersQuery.data ?? [], [pendingOrdersQuery.data]);
+  const data = useMemo(
+    () => computeDashboard(analytics?.statuses ?? [], pendingOrders),
+    [analytics?.statuses, pendingOrders],
   );
-  const data = useMemo(() => computeDashboard(orders, pendingOrders), [orders, pendingOrders]);
-  const totalOrders = Math.max(
-    summary?.totalOrders ?? ordersQuery.data?.totalElements ?? orders.length,
-    summary?.ordersToday ?? 0,
-  );
-  const loadedPaidRevenue = orders
-    .filter((order) => order.paymentStatus === "PAID")
-    .reduce((sum, order) => sum + order.totalValue, 0);
-  const totalRevenue = Math.max(
-    summary?.totalRevenue ?? 0,
-    summary?.revenueToday ?? 0,
-    loadedPaidRevenue,
-  );
+  const totalOrders = Math.max(summary?.totalOrders ?? 0, summary?.ordersToday ?? 0);
+  const totalRevenue = Math.max(summary?.totalRevenue ?? 0, summary?.revenueToday ?? 0);
   const paymentMethods = (analytics?.paymentMethods ?? []).map((metric) => ({
     name: paymentMethodLabel(metric.paymentMethod),
     value: metric.ordersCount,
@@ -157,7 +158,7 @@ function DashboardPage() {
   const filteredPending = data.pendingByCustomer.filter(
     (pending) =>
       pending.name.toLowerCase().includes(search.toLowerCase()) ||
-      pending.cpf.includes(search.replace(/\D/g, "")),
+      pending.phoneNumber.includes(search.replace(/\D/g, "")),
   );
   const exportPendingCustomers = useCallback(() => {
     exportPendingCustomersCsv(filteredPending);
@@ -170,7 +171,7 @@ function DashboardPage() {
         <div className="absolute right-0 top-20 h-96 w-96 rounded-full bg-status-preparing/[0.13] blur-3xl" />
         <div className="absolute bottom-12 left-1/3 h-72 w-72 rounded-full bg-chart-2/[0.08] blur-3xl" />
       </div>
-      <section className="relative overflow-hidden rounded-3xl border border-white/75 bg-white/55 p-6 shadow-[0_16px_46px_-24px_oklch(0.18_0.02_30_/_0.24)] backdrop-blur-2xl md:p-7">
+      <section className="relative overflow-hidden rounded-3xl border border-card/75 bg-card/55 p-6 shadow-card backdrop-blur-2xl md:p-7">
         <div className="pointer-events-none absolute -right-16 -top-24 h-56 w-56 rounded-full bg-status-preparing/20 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-28 left-1/3 h-48 w-48 rounded-full bg-primary/10 blur-3xl" />
         <div className="relative flex flex-wrap items-end justify-between gap-4">
@@ -178,22 +179,17 @@ function DashboardPage() {
             <p className="text-primary font-bold uppercase tracking-wider text-xs mb-1">
               Painel administrativo
             </p>
-            <h1 className="text-3xl md:text-4xl font-black">Resultados McDomine's</h1>
-            <p className="text-muted-foreground">
-              Pedidos, pagamentos e vendas em um só lugar
-            </p>
+            <h1 className="text-3xl md:text-4xl font-black">Resultados {branding.businessName}</h1>
+            <p className="text-muted-foreground">Pedidos, pagamentos e vendas em um só lugar</p>
           </div>
-          <div className="flex items-center gap-2 rounded-full border border-white/80 bg-white/45 px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm backdrop-blur-xl">
+          <div className="flex items-center gap-2 rounded-full border border-card/80 bg-card/45 px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm backdrop-blur-xl">
             <span className="w-2 h-2 rounded-full bg-status-finished animate-pulse" /> Atualizado
           </div>
         </div>
       </section>
 
-      {(summaryQuery.isError ||
-        analyticsQuery.isError ||
-        ordersQuery.isError ||
-        pendingOrdersQuery.isError) && (
-        <div className="rounded-xl border border-destructive/20 bg-white/55 px-4 py-3 font-medium text-destructive shadow-card backdrop-blur-xl">
+      {(summaryQuery.isError || analyticsQuery.isError || pendingOrdersQuery.isError) && (
+        <div className="rounded-xl border border-destructive/20 bg-card/55 px-4 py-3 font-medium text-destructive shadow-card backdrop-blur-xl">
           Parte dos dados não pôde ser atualizada.
         </div>
       )}
@@ -277,7 +273,7 @@ function DashboardPage() {
             <button
               onClick={() => topProductsExportMutation.mutate()}
               disabled={topProductsExportMutation.isPending}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/80 bg-white/55 px-3 py-2 text-xs font-bold text-foreground shadow-sm backdrop-blur-md transition-colors hover:border-primary/40 hover:bg-white/75 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-card/80 bg-card/55 px-3 py-2 text-xs font-bold text-foreground shadow-sm backdrop-blur-md transition-colors hover:border-primary/40 hover:bg-card/75 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <FileSpreadsheet className="h-4 w-4" />
               {topProductsExportMutation.isPending ? "Exportando..." : "Exportar planilha"}
@@ -340,21 +336,12 @@ function DashboardPage() {
               <XAxis dataKey="hour" stroke="var(--muted-foreground)" fontSize={11} />
               <YAxis stroke="var(--muted-foreground)" fontSize={11} />
               <Tooltip contentStyle={tooltipStyle} />
-              <Bar
-                dataKey="count"
-                name="Pedidos"
-                fill="var(--chart-2)"
-                radius={[6, 6, 0, 0]}
-              />
+              <Bar dataKey="count" name="Pedidos" fill="var(--chart-2)" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </Panel>
 
-        <Panel
-          title="Situação dos pedidos"
-          subtitle="Como estão os pedidos agora"
-          tone="status"
-        >
+        <Panel title="Situação dos pedidos" subtitle="Como estão os pedidos agora" tone="status">
           <ResponsiveContainer width="100%" height={240}>
             <PieChart>
               <Pie
@@ -377,51 +364,7 @@ function DashboardPage() {
       </div>
 
       <Panel
-        title="Clientes que mais compraram"
-        subtitle="Clientes com mais pagamentos confirmados"
-        tone="finance"
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs font-bold uppercase tracking-wider text-muted-foreground border-b">
-                <th className="py-3 pr-4">Cliente</th>
-                <th className="py-3 pr-4">CPF</th>
-                <th className="py-3 pr-4">Pedidos pagos</th>
-                <th className="py-3 pr-4">Total pago</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(analytics?.topClients ?? []).length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="py-10 text-center text-muted-foreground">
-                    Nenhum pagamento confirmado.
-                  </td>
-                </tr>
-              ) : (
-                analytics!.topClients.map((client) => (
-                  <tr
-                    key={client.clientId}
-                    className="border-b hover:bg-white/45 transition-colors"
-                  >
-                    <td className="py-3 pr-4 font-bold">{client.name}</td>
-                    <td className="py-3 pr-4 font-mono text-muted-foreground">
-                      {formatCPF(client.cpf)}
-                    </td>
-                    <td className="py-3 pr-4">{client.ordersCount}</td>
-                    <td className="py-3 pr-4 font-black text-primary">
-                      {formatBRL(client.totalSpent)}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
-
-      <Panel
-        title="Clientes com pagamento pendente"
+        title="Fiados pendentes"
         subtitle="Cobranças que ainda precisam de confirmação"
         tone="warning"
       >
@@ -431,18 +374,18 @@ function DashboardPage() {
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar por nome ou CPF..."
-              className="w-full rounded-xl border border-white/80 bg-white/45 py-2.5 pl-10 pr-4 text-sm shadow-sm backdrop-blur-md focus:border-primary focus:outline-none"
+              placeholder="Buscar por nome ou telefone..."
+              className="w-full rounded-xl border border-card/80 bg-card/45 py-2.5 pl-10 pr-4 text-sm shadow-sm backdrop-blur-md focus:border-primary focus:outline-none"
             />
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs font-bold text-muted-foreground">
-              {filteredPending.length} cliente(s)
+              {filteredPending.length} pessoa(s)
             </span>
             <button
               onClick={exportPendingCustomers}
               disabled={filteredPending.length === 0}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/80 bg-white/55 px-3 py-2 text-xs font-bold text-foreground shadow-sm backdrop-blur-md transition-colors hover:border-primary/40 hover:bg-white/75 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-card/80 bg-card/55 px-3 py-2 text-xs font-bold text-foreground shadow-sm backdrop-blur-md transition-colors hover:border-primary/40 hover:bg-card/75 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <FileSpreadsheet className="h-4 w-4" /> Exportar planilha
             </button>
@@ -452,8 +395,9 @@ function DashboardPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs font-bold uppercase tracking-wider text-muted-foreground border-b">
-                <th className="py-3 pr-4">Cliente</th>
-                <th className="py-3 pr-4">CPF</th>
+                <th className="py-3 pr-4">Pessoa</th>
+                <th className="py-3 pr-4">Telefone</th>
+                <th className="py-3 pr-4">Equipe</th>
                 <th className="py-3 pr-4">Valor pendente</th>
                 <th className="py-3 pr-4">Pedidos</th>
                 <th className="py-3 pr-4">Último pedido</th>
@@ -463,17 +407,16 @@ function DashboardPage() {
             <tbody>
               {filteredPending.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center text-muted-foreground">
-                    Nenhum cliente com pendência na listagem carregada.
+                  <td colSpan={7} className="py-10 text-center text-muted-foreground">
+                    Nenhum fiado pendente na listagem carregada.
                   </td>
                 </tr>
               ) : (
                 filteredPending.map((pending) => (
-                  <tr key={pending.cpf} className="border-b hover:bg-white/45 transition-colors">
+                  <tr key={pending.key} className="border-b hover:bg-card/45 transition-colors">
                     <td className="py-3 pr-4 font-bold">{pending.name}</td>
-                    <td className="py-3 pr-4 font-mono text-muted-foreground">
-                      {formatCPF(pending.cpf)}
-                    </td>
+                    <td className="py-3 pr-4">{formatPhone(pending.phoneNumber)}</td>
+                    <td className="py-3 pr-4 text-muted-foreground">{pending.team}</td>
                     <td className="py-3 pr-4 font-black text-primary">
                       {formatBRL(pending.amount)}
                     </td>
@@ -622,7 +565,7 @@ function BalanceHighlight({
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`relative min-h-[168px] overflow-hidden rounded-3xl border p-6 shadow-[0_18px_48px_-25px_oklch(0.18_0.02_30_/_0.36)] backdrop-blur-2xl ${style.shell}`}
+      className={`relative min-h-[168px] overflow-hidden rounded-3xl border p-6 shadow-card backdrop-blur-2xl ${style.shell}`}
     >
       <div className={`absolute inset-x-0 top-0 h-1 ${style.rail}`} />
       <div className="relative flex h-full flex-col justify-between gap-8">
@@ -685,7 +628,7 @@ function KPI({
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="relative overflow-hidden rounded-2xl border border-white/75 bg-white/55 p-5 shadow-[0_14px_34px_-24px_oklch(0.18_0.02_30_/_0.3)] backdrop-blur-xl transition-shadow hover:shadow-elegant"
+      className="relative overflow-hidden rounded-2xl border border-card/75 bg-card/55 p-5 shadow-card backdrop-blur-xl transition-shadow hover:shadow-elegant"
     >
       <div
         className={`pointer-events-none absolute -right-7 -top-7 h-20 w-20 rounded-full blur-2xl ${style.glow}`}
@@ -734,7 +677,7 @@ function Panel({
 
   return (
     <div
-      className={`relative overflow-hidden rounded-3xl border border-white/75 bg-white/55 p-6 shadow-[0_16px_42px_-25px_oklch(0.18_0.02_30_/_0.3)] backdrop-blur-xl ${className}`}
+      className={`relative overflow-hidden rounded-3xl border border-card/75 bg-card/55 p-6 shadow-card backdrop-blur-xl ${className}`}
     >
       <div
         className={`pointer-events-none absolute -right-20 -top-20 h-44 w-44 rounded-full blur-3xl ${accent.glow}`}
@@ -753,8 +696,8 @@ function Panel({
 }
 
 interface PendingCustomer {
+  key: string;
   name: string;
-  cpf: string;
   team: string;
   phoneNumber: string;
   amount: number;
@@ -775,23 +718,33 @@ interface PendingPaymentConfirmation {
   fallbackPaymentMethod?: ApiPaymentMethod;
 }
 
-function computeDashboard(orders: ApiOrder[], pendingOrders: ApiOrder[]) {
-  const statuses = [
-    { name: "Em preparo", value: orders.filter((order) => order.status === "PENDING").length },
-    { name: "Pronto", value: orders.filter((order) => order.status === "READY_FOR_PICKUP").length },
-    { name: "Finalizado", value: orders.filter((order) => order.status === "FINISHED").length },
-    { name: "Cancelado", value: orders.filter((order) => order.status === "CANCELLED").length },
-  ].filter((item) => item.value > 0);
+function computeDashboard(
+  statusMetrics: { status: ApiOrder["status"]; ordersCount: number }[],
+  pendingOrders: ApiOrder[],
+) {
+  const labels: Record<ApiOrder["status"], string> = {
+    PENDING: "Em preparo",
+    READY_FOR_PICKUP: "Pronto",
+    FINISHED: "Finalizado",
+    CANCELLED: "Cancelado",
+  };
+  const statuses = statusMetrics
+    .map((metric) => ({ name: labels[metric.status], value: metric.ordersCount }))
+    .filter((item) => item.value > 0);
 
   const pendingMap = new Map<string, PendingCustomer>();
   pendingOrders
     .filter((order) => order.paymentStatus === "PENDING")
     .forEach((order) => {
-      const current = pendingMap.get(order.client.cpf) ?? {
-        name: order.client.name,
-        cpf: order.client.cpf,
-        team: order.client.team ?? "",
-        phoneNumber: order.client.phoneNumber ?? "",
+      const phoneNumber = order.customerPhoneNumber ?? "";
+      const name = order.customerName ?? `Pedido #${order.id}`;
+      const team = order.customerTeam ?? "Nao informada";
+      const key = phoneNumber || `${name}:${team}`;
+      const current = pendingMap.get(key) ?? {
+        key,
+        name,
+        team,
+        phoneNumber,
         amount: 0,
         count: 0,
         lastAt: order.orderTime,
@@ -800,8 +753,8 @@ function computeDashboard(orders: ApiOrder[], pendingOrders: ApiOrder[]) {
       };
       current.amount += order.totalValue;
       current.count += 1;
-      current.team ||= order.client.team ?? "";
-      current.phoneNumber ||= order.client.phoneNumber ?? "";
+      current.team ||= team;
+      current.phoneNumber ||= phoneNumber;
       current.paymentOrders.push({
         id: order.id,
         paymentMethod: order.paymentMethod,
@@ -809,7 +762,7 @@ function computeDashboard(orders: ApiOrder[], pendingOrders: ApiOrder[]) {
       });
       if (order.paymentMethod === null) current.hasMissingPaymentMethod = true;
       if (new Date(order.orderTime) > new Date(current.lastAt)) current.lastAt = order.orderTime;
-      pendingMap.set(order.client.cpf, current);
+      pendingMap.set(key, current);
     });
 
   return {
@@ -862,8 +815,7 @@ function exportPendingCustomersCsv(customers: PendingCustomer[]) {
 
   const rows = [
     [
-      "Cliente",
-      "CPF",
+      "Pessoa",
       "Equipe",
       "Telefone",
       "Valor pendente",
@@ -873,7 +825,6 @@ function exportPendingCustomersCsv(customers: PendingCustomer[]) {
     ],
     ...customers.map((customer) => [
       customer.name,
-      formatCPF(customer.cpf),
       customer.team || "Nao informada",
       customer.phoneNumber ? formatPhone(customer.phoneNumber) : "Nao informado",
       customer.amount.toLocaleString("pt-BR", {
@@ -897,7 +848,7 @@ function exportPendingCustomersCsv(customers: PendingCustomer[]) {
   const url = URL.createObjectURL(blob);
 
   link.href = url;
-  link.download = `clientes-pagamento-pendente-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `fiados-pendentes-${new Date().toISOString().slice(0, 10)}.csv`;
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -928,5 +879,6 @@ function paymentMethodLabel(paymentMethod: ApiPaymentMethod) {
 }
 
 function escapeCsvCell(value: string) {
-  return `"${value.replace(/"/g, '""')}"`;
+  const safeValue = /^[=+\-@]/.test(value.trimStart()) ? `'${value}` : value;
+  return `"${safeValue.replace(/"/g, '""')}"`;
 }

@@ -12,13 +12,13 @@ let serverEntryPromise: Promise<ServerEntry> | undefined;
 async function getServerEntry(): Promise<ServerEntry> {
   if (!serverEntryPromise) {
     serverEntryPromise = import("@tanstack/react-start/server-entry").then(
-      (m) => ((m as { default?: ServerEntry }).default ?? (m as unknown as ServerEntry)),
+      (m) => (m as { default?: ServerEntry }).default ?? (m as unknown as ServerEntry),
     );
   }
   return serverEntryPromise;
 }
 
-function brandedErrorResponse(): Response {
+function safeErrorResponse(): Response {
   return new Response(renderErrorPage(), {
     status: 500,
     headers: { "content-type": "text/html; charset=utf-8" },
@@ -63,7 +63,7 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
   }
 
   console.error(consumeLastCapturedError() ?? new Error(`h3 swallowed SSR error: ${body}`));
-  return brandedErrorResponse();
+  return safeErrorResponse();
 }
 
 export default {
@@ -74,7 +74,7 @@ export default {
       return await normalizeCatastrophicSsrResponse(response);
     } catch (error) {
       console.error(error);
-      return brandedErrorResponse();
+      return safeErrorResponse();
     }
   },
 };

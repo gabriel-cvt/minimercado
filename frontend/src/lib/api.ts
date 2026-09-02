@@ -1,6 +1,29 @@
 import type { ApiOrderStatus, ApiPaymentStatus } from "@/websocket/websocket-types";
 
-const API_BASE_URL = import.meta.env?.VITE_API_URL || "http://localhost:8080";
+const LOCAL_API_URL = "http://localhost:8080";
+
+function configuredApiUrl(value: string | undefined, variableName: string) {
+  if (value?.trim()) return value.trim().replace(/\/+$/, "");
+  if (import.meta.env.DEV) return LOCAL_API_URL;
+  throw new Error(`${variableName} precisa ser definida em builds de produção.`);
+}
+
+const API_BASE_URL = configuredApiUrl(import.meta.env?.VITE_API_URL, "VITE_API_URL");
+
+export const OPERATIONAL_KEY_STORAGE = "minimercado.operational-key.v1";
+
+export function getOperationalKey() {
+  return typeof window === "undefined"
+    ? ""
+    : (sessionStorage.getItem(OPERATIONAL_KEY_STORAGE) ?? "");
+}
+
+export function setOperationalKey(key: string) {
+  if (typeof window === "undefined") return;
+  if (key) sessionStorage.setItem(OPERATIONAL_KEY_STORAGE, key);
+  else sessionStorage.removeItem(OPERATIONAL_KEY_STORAGE);
+  window.dispatchEvent(new Event("operational-auth-changed"));
+}
 
 export type ApiPaymentMethod = "PIX" | "DINHEIRO" | "CARTAO";
 export type ApiProductVariantSelectionMode = "SINGLE" | "MULTIPLE";
@@ -22,20 +45,12 @@ export interface ApiProductVariant {
   available: boolean;
 }
 
-export interface ApiClient {
-  id: number;
-  name: string;
-  cpf: string;
-  phoneNumber?: string;
-  team?: string;
-}
-
 export interface ApiProduct {
   id: number;
   name: string;
   price: number;
   icon: ApiProductIcon;
-  stockQuantity: number;
+  available: boolean;
   hasVariants: boolean;
   variantType: string | null;
   variantSelectionRequired: boolean;
@@ -65,11 +80,15 @@ export interface ApiOrder {
   status: ApiOrderStatus;
   paymentStatus: ApiPaymentStatus;
   items: ApiOrderItem[];
-  client: ApiClient;
   paymentMethod: ApiPaymentMethod | null;
+  customerName: string | null;
+  customerPhoneNumber: string | null;
+  customerTeam: string | null;
   totalValue: number;
   observation: string | null;
 }
+
+export type ApiPublicOrder = Pick<ApiOrder, "id" | "orderTime" | "readyAt" | "status">;
 
 export interface ApiDashboardSummary {
   ordersToday: number;
@@ -96,13 +115,7 @@ export interface ApiDashboardAnalytics {
   averageTicket: number;
   paymentMethods: { paymentMethod: ApiPaymentMethod; ordersCount: number }[];
   ordersByHour: { hour: number; ordersCount: number }[];
-  topClients: {
-    clientId: number;
-    name: string;
-    cpf: string;
-    ordersCount: number;
-    totalSpent: number;
-  }[];
+  statuses: { status: ApiOrderStatus; ordersCount: number }[];
   topProducts: ApiTopProduct[];
 }
 
@@ -128,17 +141,26 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const operationalKey = getOperationalKey();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
       Accept: "application/json",
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...(operationalKey ? { "X-Admin-Key": operationalKey } : {}),
       ...init?.headers,
     },
   });
 
   if (!response.ok) {
-    const message = await response.text().catch(() => "");
+    const rawMessage = await response.text().catch(() => "");
+    let message = rawMessage;
+    try {
+      const problem = JSON.parse(rawMessage) as { detail?: string; title?: string };
+      message = problem.detail || problem.title || rawMessage;
+    } catch {
+      // Keep plain-text errors unchanged.
+    }
     throw new ApiError(response.status, message || "Não foi possível concluir a solicitação.");
   }
 
@@ -147,6 +169,55 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+export function verifyOperationalAccess() {
+  return request<{ authenticated: boolean }>("/api/auth/verify");
+}
+
+export interface ApiAppSettings {
+  businessName: string;
+  shortName: string;
+  tagline: string;
+  description: string;
+  homeTitle: string;
+  homeDescription: string;
+  footerText: string;
+  panelTitle: string;
+  panelSubtitle: string;
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+  backgroundColor: string;
+  surfaceColor: string;
+  textColor: string;
+  mutedTextColor: string;
+  borderColor: string;
+  preparingColor: string;
+  readyColor: string;
+  destructiveColor: string;
+  borderRadius: number;
+  fontFamily: "system" | "serif" | "rounded" | "mono";
+  updatedAt: string;
+}
+
+export type AppSettingsWriteData = Omit<ApiAppSettings, "updatedAt">;
+
+export function getPublicSettings() {
+  return request<ApiAppSettings>("/api/settings/public");
+}
+
+export function updateAppSettings(data: AppSettingsWriteData) {
+  return request<ApiAppSettings>("/api/settings", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export function resetAppSettings() {
+  return request<ApiAppSettings>("/api/settings/reset", {
+    method: "POST",
+  });
 }
 
 function queryString(params: Record<string, string | number | boolean | undefined>) {
@@ -158,34 +229,10 @@ function queryString(params: Record<string, string | number | boolean | undefine
   return value ? `?${value}` : "";
 }
 
-export function getClientByCpf(cpf: string) {
-  return request<ApiClient>(`/api/clients/cpf/${encodeURIComponent(cpf)}`);
-}
-
-export function searchClients(
-  params: {
-    query?: string;
-    page?: number;
-    size?: number;
-    sort?: string;
-  } = {},
-) {
-  return request<Page<ApiClient>>(
-    `/api/clients${queryString({ page: 0, size: 8, sort: "name,asc", ...params })}`,
-  );
-}
-
-export function createClient(data: { name: string; cpf: string; phoneNumber?: string; team: string }) {
-  return request<ApiClient>("/api/clients", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-}
-
 export function getProducts(
   params: {
     name?: string;
-    inStock?: boolean;
+    available?: boolean;
     page?: number;
     size?: number;
     sort?: string;
@@ -200,7 +247,7 @@ export interface ProductWriteData {
   name: string;
   price: number;
   icon: ApiProductIcon;
-  stockQuantity?: number;
+  available?: boolean;
   hasVariants: boolean;
   variantType?: string;
   variantSelectionRequired: boolean;
@@ -208,7 +255,7 @@ export interface ProductWriteData {
   variants: { id?: number; name: string; available: boolean }[];
 }
 
-export function createProduct(data: ProductWriteData & { stockQuantity: number }) {
+export function createProduct(data: ProductWriteData) {
   return request<ApiProduct>("/api/products", {
     method: "POST",
     body: JSON.stringify(data),
@@ -219,28 +266,23 @@ export function getProduct(id: number) {
   return request<ApiProduct>(`/api/products/${id}`);
 }
 
-export function updateProduct(id: number, data: Omit<ProductWriteData, "stockQuantity">) {
+export function updateProduct(id: number, data: ProductWriteData) {
   return request<ApiProduct>(`/api/products/${id}`, {
     method: "PUT",
     body: JSON.stringify(data),
   });
 }
 
-export function updateProductStock(id: number, quantityChange: number) {
-  return request<ApiProduct>(`/api/products/${id}/stock`, {
+export function updateProductAvailability(id: number, available: boolean) {
+  return request<ApiProduct>(`/api/products/${id}/availability`, {
     method: "PATCH",
-    body: JSON.stringify({ quantityChange }),
+    body: JSON.stringify({ available }),
   });
-}
-
-export function removeProduct(id: number) {
-  return request<void>(`/api/products/${id}`, { method: "DELETE" });
 }
 
 export interface OrderFilters {
   status?: ApiOrderStatus;
   paymentStatus?: ApiPaymentStatus;
-  clientCpf?: string;
   from?: string;
   to?: string;
   page?: number;
@@ -255,10 +297,8 @@ export function getOrders(params: OrderFilters = {}) {
 }
 
 export function getKitchenPendingOrders() {
-  return getOrders({
+  return getAllOrders({
     status: "PENDING",
-    page: 0,
-    size: 500,
     sort: "orderTime,asc",
   });
 }
@@ -274,8 +314,11 @@ export function createOrder(data: {
     selectedVariantId?: number;
     selectedVariantIds?: number[];
   }[];
-  clienteCpf: string;
   paymentMethod?: ApiPaymentMethod;
+  confirmPayment?: boolean;
+  customerName?: string;
+  customerPhoneNumber?: string;
+  customerTeam?: string;
   observation?: string;
 }) {
   return request<ApiOrder>("/api/orders", {
@@ -293,7 +336,10 @@ export function updateOrder(
       selectedVariantId?: number;
       selectedVariantIds?: number[];
     }[];
-    clienteCpf: string;
+    paymentMethod?: ApiPaymentMethod;
+    customerName?: string;
+    customerPhoneNumber?: string;
+    customerTeam?: string;
     observation?: string;
   },
 ) {
@@ -332,4 +378,45 @@ export function getDashboardAnalytics() {
 
 export function getDashboardTopProducts() {
   return request<ApiTopProduct[]>("/api/dashboard/top-products");
+}
+
+export async function getAllProducts(
+  params: Omit<Parameters<typeof getProducts>[0], "page" | "size"> = {},
+) {
+  const pageSize = 200;
+  const firstPage = await getProducts({ ...params, page: 0, size: pageSize });
+  if (firstPage.totalPages <= 1) return firstPage.content;
+  const remainingPages: Page<ApiProduct>[] = [];
+  for (let page = 1; page < firstPage.totalPages; page += 1) {
+    remainingPages.push(await getProducts({ ...params, page, size: pageSize }));
+  }
+  return [firstPage, ...remainingPages].flatMap((page) => page.content);
+}
+
+export async function getAllOrders(params: Omit<OrderFilters, "page" | "size"> = {}) {
+  const pageSize = 200;
+  const firstPage = await getOrders({ ...params, page: 0, size: pageSize });
+  if (firstPage.totalPages <= 1) return firstPage.content;
+  const remainingPages: Page<ApiOrder>[] = [];
+  for (let page = 1; page < firstPage.totalPages; page += 1) {
+    remainingPages.push(await getOrders({ ...params, page, size: pageSize }));
+  }
+  return [firstPage, ...remainingPages].flatMap((page) => page.content);
+}
+
+export async function getAllPublicOrders(
+  params: Pick<OrderFilters, "status" | "sort"> & { status: "PENDING" | "READY_FOR_PICKUP" },
+) {
+  const pageSize = 200;
+  const firstPage = await request<Page<ApiPublicOrder>>(
+    `/api/orders/public${queryString({ ...params, page: 0, size: pageSize })}`,
+  );
+  const orders = [...firstPage.content];
+  for (let page = 1; page < firstPage.totalPages; page += 1) {
+    const next = await request<Page<ApiPublicOrder>>(
+      `/api/orders/public${queryString({ ...params, page, size: pageSize })}`,
+    );
+    orders.push(...next.content);
+  }
+  return orders;
 }

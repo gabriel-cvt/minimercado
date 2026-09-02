@@ -1,6 +1,5 @@
 package com.minimercado.backend;
 
-import com.minimercado.backend.repository.ClientRepository;
 import com.minimercado.backend.repository.OrderRepository;
 import com.minimercado.backend.repository.ProductRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -38,40 +37,22 @@ class DashboardIntegrationTests {
     @Autowired
     private ProductRepository productRepository;
 
-    @Autowired
-    private ClientRepository clientRepository;
-
     @AfterEach
     void removeCommittedScenarioData() {
         orderRepository.deleteAll();
         productRepository.deleteAll();
-        clientRepository.deleteAll();
     }
 
     @Test
     void topProductsEndpointReturnsProductsInDescendingQuantityOrder() throws Exception {
-        String cpf = "12345678909";
+        long smashBurgerId = createProduct("Smash burger", 18.90);
+        long batataId = createProduct("Batata frita", 12.00);
+        long canceladoId = createProduct("Produto cancelado", 7.00);
 
-        mockMvc.perform(post("/api/clients")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "name": "Cliente Dashboard",
-                                  "cpf": "%s",
-                                  "phoneNumber": "85999999999",
-                                  "team": "Minimercado"
-                                }
-                                """.formatted(cpf)))
-                .andExpect(status().isCreated());
-
-        long smashBurgerId = createProduct("Smash burger", 18.90, 20);
-        long batataId = createProduct("Batata frita", 12.00, 20);
-        long canceladoId = createProduct("Produto cancelado", 7.00, 30);
-
-        createOrder(cpf, batataId, 2);
-        createOrder(cpf, batataId, 1);
-        createOrder(cpf, smashBurgerId, 5);
-        long cancelledOrderId = createOrder(cpf, canceladoId, 20);
+        createOrder(batataId, 2);
+        createOrder(batataId, 1);
+        createOrder(smashBurgerId, 5);
+        long cancelledOrderId = createOrder(canceladoId, 20);
 
         mockMvc.perform(patch("/api/orders/{id}/cancel", cancelledOrderId))
                 .andExpect(status().isOk());
@@ -86,16 +67,15 @@ class DashboardIntegrationTests {
                 .andExpect(jsonPath("$[*].name", not(hasItem("Produto cancelado"))));
     }
 
-    private long createProduct(String name, double price, int stockQuantity) throws Exception {
+    private long createProduct(String name, double price) throws Exception {
         JsonNode product = objectMapper.readTree(mockMvc.perform(post("/api/products")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
                                   "name": "%s",
-                                  "price": %s,
-                                  "stockQuantity": %d
+                                  "price": %s
                                 }
-                                """.formatted(name, Double.toString(price), stockQuantity)))
+                                """.formatted(name, Double.toString(price))))
                 .andExpect(status().isCreated())
                 .andReturn()
                 .getResponse()
@@ -104,16 +84,15 @@ class DashboardIntegrationTests {
         return product.get("id").asLong();
     }
 
-    private long createOrder(String cpf, long productId, int quantity) throws Exception {
+    private long createOrder(long productId, int quantity) throws Exception {
         JsonNode order = objectMapper.readTree(mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
                                   "items": [{ "productId": %d, "quantity": %d }],
-                                  "clienteCpf": "%s",
                                   "paymentMethod": "PIX"
                                 }
-                                """.formatted(productId, quantity, cpf)))
+                                """.formatted(productId, quantity)))
                 .andExpect(status().isCreated())
                 .andReturn()
                 .getResponse()

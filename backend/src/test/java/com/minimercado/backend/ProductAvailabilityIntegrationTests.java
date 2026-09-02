@@ -10,7 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -21,7 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-class ProductDeletionIntegrationTests {
+class ProductAvailabilityIntegrationTests {
 
     @Autowired
     private MockMvc mockMvc;
@@ -30,28 +29,13 @@ class ProductDeletionIntegrationTests {
     private ObjectMapper objectMapper;
 
     @Test
-    void removalPreservesOrderHistoryAndBlocksNewUseOfArchivedProduct() throws Exception {
-        String cpf = "06874245422";
-
-        mockMvc.perform(post("/api/clients")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "name": "Cliente Produto Removido",
-                                  "cpf": "%s",
-                                  "phoneNumber": "85999999999",
-                                  "team": "Minimercado"
-                                }
-                                """.formatted(cpf)))
-                .andExpect(status().isCreated());
-
+    void disablingPreservesOrderHistoryAndBlocksNewSales() throws Exception {
         JsonNode product = objectMapper.readTree(mockMvc.perform(post("/api/products")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
                                   "name": "Produto historico",
-                                  "price": 12.50,
-                                  "stockQuantity": 10
+                                  "price": 12.50
                                 }
                                 """))
                 .andExpect(status().isCreated())
@@ -63,10 +47,9 @@ class ProductDeletionIntegrationTests {
         String oneItemOrder = """
                 {
                   "items": [{ "productId": %d, "quantity": 1 }],
-                  "clienteCpf": "%s",
                   "paymentMethod": "PIX"
                 }
-                """.formatted(productId, cpf);
+                """.formatted(productId);
         JsonNode order = objectMapper.readTree(mockMvc.perform(post("/api/orders")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(oneItemOrder))
@@ -86,13 +69,25 @@ class ProductDeletionIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Produto renomeado"));
 
-        mockMvc.perform(delete("/api/products/{id}", productId))
-                .andExpect(status().isNoContent());
+        mockMvc.perform(patch("/api/products/{id}/availability", productId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "available": false }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.available").value(false));
 
         mockMvc.perform(get("/api/products/{id}", productId))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.available").value(false))
+                .andExpect(jsonPath("$.quantitySold").doesNotExist());
 
-        mockMvc.perform(get("/api/products"))
+        mockMvc.perform(get("/api/dashboard/top-products"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].productId").value(productId))
+                .andExpect(jsonPath("$[0].quantitySold").value(1));
+
+        mockMvc.perform(get("/api/products").param("available", "true"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content.length()").value(0));
 
@@ -109,15 +104,32 @@ class ProductDeletionIntegrationTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "items": [{ "productId": %d, "quantity": 2 }],
-                                  "clienteCpf": "%s"
+                                  "items": [{ "productId": %d, "quantity": 1 }],
+                                  "paymentMethod": "PIX",
+                                  "observation": "Mantem snapshot"
                                 }
-                                """.formatted(productId, cpf)))
+                                """.formatted(productId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].productName").value("Produto historico"))
+                .andExpect(jsonPath("$.items[0].unitPrice").value(12.5));
+
+        mockMvc.perform(put("/api/orders/{id}", orderId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "items": [{ "productId": %d, "quantity": 2 }],
+                                  "paymentMethod": "PIX"
+                                }
+                                """.formatted(productId)))
                 .andExpect(status().isConflict());
 
         mockMvc.perform(patch("/api/orders/{id}/cancel", orderId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("CANCELLED"))
                 .andExpect(jsonPath("$.items[0].productName").value("Produto historico"));
+
+        mockMvc.perform(get("/api/dashboard/top-products"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
     }
 }

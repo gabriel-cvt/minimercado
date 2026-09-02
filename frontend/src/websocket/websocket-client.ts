@@ -1,5 +1,6 @@
 import { Client, type IMessage, type StompSubscription } from "@stomp/stompjs";
 import type { ConnectionStatus } from "./websocket-types";
+import { getOperationalKey } from "@/lib/api";
 
 type Listener<T> = (payload: T, raw: IMessage) => void;
 type StatusListener = (status: ConnectionStatus, attempts: number) => void;
@@ -61,6 +62,7 @@ class WebSocketService {
     const SockJS = (await import("sockjs-client")).default;
 
     const client = new Client({
+      connectHeaders: getOperationalKey() ? { "X-Admin-Key": getOperationalKey() } : {},
       webSocketFactory: () => new SockJS(WS_URL) as unknown as WebSocket,
       reconnectDelay: 4000,
       heartbeatIncoming: 10000,

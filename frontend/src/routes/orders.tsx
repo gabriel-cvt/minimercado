@@ -6,7 +6,7 @@ import { OrdersFlow } from "@/components/mcd/OrdersFlow";
 import { OrderDetails } from "@/components/mcd/OrderDetails";
 
 export const Route = createFileRoute("/orders")({
-  head: () => ({ meta: [{ title: "Pedidos — McDomine's" }] }),
+  head: () => ({ meta: [{ title: "Pedidos — Sistema de Pedidos" }] }),
   component: OrdersPage,
 });
 

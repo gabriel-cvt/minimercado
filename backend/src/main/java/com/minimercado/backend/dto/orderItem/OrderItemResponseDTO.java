@@ -1,13 +1,14 @@
 package com.minimercado.backend.dto.orderItem;
 
 import java.util.List;
+import java.math.BigDecimal;
 
 public record OrderItemResponseDTO(
         Long productId,
         String productName,
-        Double unitPrice,
+        BigDecimal unitPrice,
         Integer quantity,
-        Double subtotal,
+        BigDecimal subtotal,
         Long selectedVariantId,
         String selectedVariantName,
         List<Long> selectedVariantIds,

@@ -3,12 +3,12 @@ package com.minimercado.backend.controller;
 import com.minimercado.backend.dto.product.ProductPostDTO;
 import com.minimercado.backend.dto.product.ProductPutDTO;
 import com.minimercado.backend.dto.product.ProductResponseDTO;
-import com.minimercado.backend.dto.product.ProductStockUpdateDTO;
+import com.minimercado.backend.dto.product.ProductAvailabilityUpdateDTO;
+import com.minimercado.backend.dto.PageResponse;
 import com.minimercado.backend.service.product.ProductService;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -21,23 +21,23 @@ import static com.minimercado.backend.controller.ApiRoutes.*;
 @RequiredArgsConstructor
 public class ProductController {
 
-    private static final Set<String> PRODUCT_SORT_FIELDS = Set.of("id", "name", "price", "stockQuantity");
+    private static final Set<String> PRODUCT_SORT_FIELDS = Set.of("id", "name", "price", "available");
 
     private final ProductService productService;
 
     @GetMapping(API_PRODUCT)
-    public ResponseEntity<Page<ProductResponseDTO>> listAll(
+    public ResponseEntity<PageResponse<ProductResponseDTO>> listAll(
             @RequestParam(required = false) String name,
-            @RequestParam(required = false) Boolean inStock,
+            @RequestParam(required = false) Boolean available,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @Parameter(description = "Ordenacao no formato campo,direcao. Campos aceitos: id, name, price, stockQuantity.", example = "id,asc")
+            @Parameter(description = "Ordenacao no formato campo,direcao. Campos aceitos: id, name, price, available.", example = "id,asc")
             @RequestParam(defaultValue = "name,asc") String sort) {
-        return ResponseEntity.ok(productService.getAll(
+        return ResponseEntity.ok(PageResponse.from(productService.getAll(
                 PageRequestFactory.create(page, size, sort, PRODUCT_SORT_FIELDS),
                 name,
-                inStock
-        ));
+                available
+        )));
     }
 
     @GetMapping(API_PRODUCT_ID)
@@ -59,18 +59,10 @@ public class ProductController {
         return ResponseEntity.ok(productService.update(id, data));
     }
 
-    @PatchMapping(API_PRODUCT_STOCK)
-    public ResponseEntity<ProductResponseDTO> updateStock(
+    @PatchMapping(API_PRODUCT_AVAILABILITY)
+    public ResponseEntity<ProductResponseDTO> updateAvailability(
             @PathVariable Long id,
-            @RequestBody @Valid ProductStockUpdateDTO data) {
-        return ResponseEntity.ok(productService.updateStock(id, data.quantityChange()));
-    }
-
-    @DeleteMapping(API_PRODUCT_ID)
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        productService.delete(id);
-        return ResponseEntity
-                .noContent()
-                .build();
+            @RequestBody @Valid ProductAvailabilityUpdateDTO data) {
+        return ResponseEntity.ok(productService.updateAvailability(id, data.available()));
     }
 }

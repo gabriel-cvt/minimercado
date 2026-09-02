@@ -3,15 +3,20 @@ package com.minimercado.backend.dto.product;
 import com.minimercado.backend.enums.ProductVariantSelectionMode;
 import com.minimercado.backend.model.ProductIcon;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Digits;
 
 import java.util.List;
+import java.math.BigDecimal;
 
 public record ProductPutDTO(
-        String name,
-        Double price,
+        @Size(min = 1, max = 255) String name,
+        @Positive @Digits(integer = 10, fraction = 2) BigDecimal price,
         ProductIcon icon,
+        Boolean available,
         Boolean hasVariants,
-        String variantType,
+        @Size(max = 255) String variantType,
         Boolean variantSelectionRequired,
         ProductVariantSelectionMode variantSelectionMode,
         @Valid List<ProductVariantInputDTO> variants
