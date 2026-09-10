@@ -2,7 +2,7 @@
 
 O Compose executa quatro servicos:
 
-- `frontend`: aplicacao TanStack Start servida localmente pelo Wrangler na porta `5173`.
+- `frontend`: aplicacao TanStack Start servida localmente pelo Vite na porta `5173`.
 - `backend`: API Spring Boot e WebSocket na porta `8080`.
 - `db`: PostgreSQL na porta `5432`, com dados preservados no volume `mcdominus_postgres_data`.
 - `pgadmin`: interface web do PostgreSQL na porta `5050`, com configuracoes preservadas no volume `mcdominus_pgadmin_data`.
@@ -19,6 +19,8 @@ DB_PASS=troque_esta_senha
 POSTGRES_DB=minimercado
 POSTGRES_USER=minimercado
 POSTGRES_PASSWORD=troque_esta_senha
+PGADMIN_DEFAULT_EMAIL=admin@mini.com
+PGADMIN_DEFAULT_PASSWORD=admin
 APP_ADMIN_KEY=troque_esta_chave_operacional
 APP_CORS_ALLOWED_ORIGINS=*
 ```
@@ -37,14 +39,15 @@ VITE_WS_URL=http://192.168.0.10:8080/ws
 
 `VITE_API_URL` e `VITE_WS_URL` sao os enderecos publicos acessados pelo navegador.
 O frontend usa `VITE_API_URL` tanto no navegador quanto na renderizacao inicial.
-As variaveis `VITE_*` sao incorporadas no build do frontend. Sempre execute o build novamente depois de troca-las.
+No Compose, o frontend roda pelo servidor de desenvolvimento do Vite e le `frontend/.env` ao iniciar.
+Depois de alterar `frontend/.env` ou `backend/.env`, recrie os containers com `docker compose down` e `docker compose up -d`.
 
 ## Subir
 
 ```bash
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
-# Edite os arquivos .env antes do build.
+# Edite os arquivos .env antes de subir.
 docker compose up --build -d
 ```
 
@@ -69,7 +72,7 @@ Usuario: minimercado
 Senha: o valor de POSTGRES_PASSWORD no backend/.env
 ```
 
-Se quiser trocar o login do pgAdmin, exporte `PGADMIN_DEFAULT_EMAIL` e `PGADMIN_DEFAULT_PASSWORD` antes de subir o Compose.
+Se quiser trocar o login do pgAdmin, altere `PGADMIN_DEFAULT_EMAIL` e `PGADMIN_DEFAULT_PASSWORD` em `backend/.env` antes de subir o Compose.
 
 ## Operacao
 
@@ -80,4 +83,5 @@ docker compose start
 docker compose down
 ```
 
+`docker compose stop` e `docker compose start` nao recriam containers; use `docker compose down` seguido de `docker compose up -d` quando alterar arquivos `.env`.
 `docker compose down` remove os containers, mas preserva o banco. Para apagar tambem os dados persistidos, use explicitamente `docker compose down -v`.
