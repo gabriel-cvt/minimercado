@@ -5,6 +5,7 @@ Seed products from the CARDAPIO E VALORES PDF through the backend API.
 Usage:
   python3 scripts/seed_menu_products.py
   python3 scripts/seed_menu_products.py --base-url http://localhost:8080
+  APP_ADMIN_KEY=sua-chave python3 scripts/seed_menu_products.py
   python3 scripts/seed_menu_products.py --dry-run
   python3 scripts/seed_menu_products.py --create-only
 
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import dataclass, field
 from typing import Any
@@ -33,6 +35,7 @@ class ProductSeed:
     has_variants: bool = False
     variant_type: str | None = None
     variant_selection_required: bool = False
+    variant_selection_mode: str = "SINGLE"
     variants: list[dict[str, Any]] = field(default_factory=list)
 
     def create_payload(self) -> dict[str, Any]:
@@ -44,6 +47,7 @@ class ProductSeed:
             "hasVariants": self.has_variants,
             "variantType": self.variant_type,
             "variantSelectionRequired": self.variant_selection_required,
+            "variantSelectionMode": self.variant_selection_mode,
             "variants": self.variants,
         }
         return without_none(payload)
@@ -61,38 +65,114 @@ class ProductSeed:
             "hasVariants": self.has_variants,
             "variantType": self.variant_type,
             "variantSelectionRequired": self.variant_selection_required,
+            "variantSelectionMode": self.variant_selection_mode,
             "variants": variants,
         }
         return without_none(payload)
 
 
+def variant_options(*names: str) -> list[dict[str, Any]]:
+    return [{"name": name, "available": True} for name in names]
+
+
 MENU_PRODUCTS: list[ProductSeed] = [
-    ProductSeed("Hamburguer", 15.00, "SANDWICH"),
-    ProductSeed("Combo Hamburguer", 20.00, "COMBO"),
-    ProductSeed("Batata", 5.00, "SNACK"),
-    ProductSeed("Espetinho", 15.00, "MEAL"),
-    ProductSeed("Jantinha", 15.00, "MEAL"),
-    ProductSeed("Cuscuz recheado", 10.00, "SNACK"),
-    ProductSeed("Tapioca", 10.00, "SNACK"),
-    ProductSeed("Salgado", 6.00, "SNACK"),
-    ProductSeed("Docinho", 3.00, "DESSERT"),
-    ProductSeed("Sobremesas", 8.00, "DESSERT"),
-    ProductSeed("Fatia de torta", 8.00, "DESSERT"),
-    ProductSeed("Misto quente", 4.00, "SANDWICH"),
-    ProductSeed("Pão de São José da Mata", 2.00, "BAKERY"),
-    ProductSeed("Fatia de bolo vulcão", 5.00, "BAKERY"),
-    ProductSeed("Açaí", 10.00, "FROZEN_DESSERT"),
-    ProductSeed("Dindin", 6.00, "FROZEN_DESSERT"),
-    ProductSeed("Tortinha de frango", 12.00, "SNACK"),
+    ProductSeed(
+        "Tapioca",
+        12.00,
+        "SNACK",
+        has_variants=True,
+        variant_type="Sabor",
+        variant_selection_required=True,
+        variants=variant_options(
+            "Frango c/ queijo",
+            "Calabresa c/ queijo",
+            "Presunto c/ queijo",
+            "Manteiga",
+            "Coco c/ queijo",
+            "Carne de sol c/ queijo",
+            "Romeu e Julieta",
+            "Chocolate",
+            "Coco e leite condensado",
+        ),
+    ),
+    ProductSeed("X-Tudão", 15.00, "SANDWICH"),
+    ProductSeed(
+        "Cuscuz recheado",
+        10.00,
+        "SNACK",
+        has_variants=True,
+        variant_type="Sabor",
+        variant_selection_required=True,
+        variants=variant_options(
+            "Frango c/ queijo",
+            "Calabresa c/ queijo",
+            "Presunto c/ queijo",
+            "Manteiga",
+            "Coco c/ queijo",
+            "Carne de sol c/ queijo",
+        ),
+    ),
+    ProductSeed("Torta de frango", 12.00, "BAKERY"),
+    ProductSeed(
+        "Salgados",
+        6.00,
+        "SNACK",
+        has_variants=True,
+        variant_type="Tipo",
+        variant_selection_required=True,
+        variants=variant_options(
+            "Coxinha",
+            "Pastel salgado",
+            "Pastel doce",
+            "Pastel baiano",
+        ),
+    ),
+    ProductSeed("Jantinha", 10.00, "MEAL"),
+    ProductSeed("Pão c/ ovo", 3.00, "BAKERY"),
+    ProductSeed("Misto", 5.00, "SANDWICH"),
+    ProductSeed(
+        "Crepe",
+        5.00,
+        "SNACK",
+        has_variants=True,
+        variant_type="Sabor",
+        variant_selection_required=True,
+        variants=variant_options("Doce", "Queijo", "Misto"),
+    ),
+    ProductSeed("Delícia de macaxeira", 10.00, "MEAL"),
+    ProductSeed(
+        "Fatia de pizza",
+        8.00,
+        "SNACK",
+        has_variants=True,
+        variant_type="Sabor",
+        variant_selection_required=True,
+        variants=variant_options("Calabresa", "Frango"),
+    ),
     ProductSeed("Água", 2.00, "DRINK"),
-    ProductSeed("Energético", 14.00, "DRINK"),
-    ProductSeed("Lata de refrigerante", 6.00, "DRINK"),
-    ProductSeed("H2O", 7.00, "DRINK"),
-    ProductSeed("Garrafa de suco", 5.00, "DRINK"),
-    ProductSeed("Água com gás", 4.00, "DRINK"),
-    ProductSeed("Copo de café", 1.00, "HOT_DRINK"),
-    ProductSeed("Copo de suco", 2.00, "DRINK"),
+    ProductSeed("Água c/ gás", 4.00, "DRINK"),
+    ProductSeed("Café", 2.00, "HOT_DRINK"),
+    ProductSeed("Refrigerantes", 5.00, "DRINK"),
+    ProductSeed("Coca Cola", 6.00, "DRINK"),
+    ProductSeed("Copo de refrigerante", 2.00, "DRINK"),
+    ProductSeed("Energético", 12.00, "DRINK"),
+    ProductSeed("H2OH", 6.00, "DRINK"),
     ProductSeed("Chocolate quente", 5.00, "HOT_DRINK"),
+    ProductSeed("Açaí", 12.00, "FROZEN_DESSERT"),
+    ProductSeed("Doces finos by Cacau Show", 3.00, "DESSERT"),
+    ProductSeed("Docinhos", 2.00, "DESSERT"),
+    ProductSeed("Dindin", 6.00, "FROZEN_DESSERT"),
+    ProductSeed("Mousse", 5.00, "DESSERT"),
+    ProductSeed("Pudim", 8.00, "DESSERT"),
+    ProductSeed("Jujuba", 1.50, "DESSERT"),
+    ProductSeed("Halls", 2.50, "DESSERT"),
+    ProductSeed("Trident", 3.00, "DESSERT"),
+    ProductSeed("Baton", 2.50, "DESSERT"),
+    ProductSeed("Paçoca", 1.00, "DESSERT"),
+    ProductSeed("Pipoca Karintó", 2.00, "SNACK"),
+    ProductSeed("Pirulito Pop", 0.50, "DESSERT"),
+    ProductSeed("Ouro Branco", 2.50, "DESSERT"),
+    ProductSeed("Sonho de Valsa", 2.50, "DESSERT"),
 ]
 
 
@@ -125,8 +205,9 @@ def preserve_variant_ids(
 
 
 class ProductApi:
-    def __init__(self, base_url: str) -> None:
+    def __init__(self, base_url: str, admin_key: str | None) -> None:
         self.base_url = base_url.rstrip("/")
+        self.admin_key = admin_key
 
     def list_products_by_name(self, name: str) -> list[dict[str, Any]]:
         query = urlencode({"name": name, "page": 0, "size": 100, "sort": "name,asc"})
@@ -154,6 +235,8 @@ class ProductApi:
     ) -> dict[str, Any]:
         body = None
         headers = {"Accept": "application/json"}
+        if self.admin_key:
+            headers["X-Admin-Key"] = self.admin_key
 
         if payload is not None:
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -200,6 +283,11 @@ def seed_products(
         current = api.find_product_by_exact_name(product.name)
 
         if current is None:
+            if not product.available:
+                print(f"[skip]   {product.name} unavailable legacy product is missing")
+                skipped += 1
+                continue
+
             print(f"[create] {product.name} - R$ {product.price:.2f}")
             if not dry_run:
                 api.create_product(product)
@@ -240,12 +328,24 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Create missing products, but do not update existing products.",
     )
+    parser.add_argument(
+        "--admin-key",
+        default=os.environ.get("APP_ADMIN_KEY"),
+        help="Operational admin key. Defaults to APP_ADMIN_KEY.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    api = ProductApi(args.base_url)
+    if not args.dry_run and not args.admin_key:
+        print(
+            "Error: set APP_ADMIN_KEY or pass --admin-key before mutating products.",
+            file=sys.stderr,
+        )
+        return 1
+
+    api = ProductApi(args.base_url, args.admin_key)
 
     try:
         seed_products(

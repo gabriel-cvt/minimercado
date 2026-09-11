@@ -1,0 +1,6 @@
+FROM python:3.13-alpine
+
+WORKDIR /app
+COPY scripts/seed_menu_products.py ./seed_menu_products.py
+
+ENTRYPOINT ["python", "/app/seed_menu_products.py"]

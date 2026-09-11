@@ -51,3 +51,18 @@ docker compose down
 ```
 
 Após a instalação inicial, o sistema pode funcionar somente pela rede local, sem acesso à internet.
+
+## Cadastrar produtos do cardápio
+
+O script de carga do cardápio pode rodar dentro de Docker, sem instalar Python na máquina:
+
+```powershell
+.\scripts\run_seed_menu_products_docker.ps1
+```
+
+Por padrão, ele lê `APP_ADMIN_KEY` de `backend/.env` e acessa a API em `http://host.docker.internal:8080`.
+Para conferir a carga sem criar ou alterar produtos:
+
+```powershell
+.\scripts\run_seed_menu_products_docker.ps1 -DryRun
+```

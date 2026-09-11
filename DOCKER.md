@@ -4,8 +4,8 @@ O Compose executa quatro servicos:
 
 - `frontend`: aplicacao TanStack Start servida localmente pelo Vite na porta `5173`.
 - `backend`: API Spring Boot e WebSocket na porta `8080`.
-- `db`: PostgreSQL na porta `5432`, com dados preservados no volume `mcdominus_postgres_data`.
-- `pgadmin`: interface web do PostgreSQL na porta `5050`, com configuracoes preservadas no volume `mcdominus_pgadmin_data`.
+- `db`: PostgreSQL na porta `5432`, com dados preservados no volume `mini_postgres_data`.
+- `pgadmin`: interface web do PostgreSQL na porta `5050`, com configuracoes preservadas no volume `mini_pgadmin_data`.
 
 ## Ambiente
 
@@ -21,7 +21,7 @@ POSTGRES_USER=minimercado
 POSTGRES_PASSWORD=troque_esta_senha
 PGADMIN_DEFAULT_EMAIL=admin@mini.com
 PGADMIN_DEFAULT_PASSWORD=admin
-APP_ADMIN_KEY=troque_esta_chave_operacional
+APP_ADMIN_KEY=troque-esta-chave-operacional
 APP_CORS_ALLOWED_ORIGINS=*
 ```
 
@@ -58,7 +58,7 @@ O pgAdmin fica disponivel em `http://IP_DA_MAQUINA:5050`.
 Login padrao:
 
 ```text
-Email: admin@mcdominus.com
+Email: admin@mini.com
 Senha: admin
 ```
 
@@ -73,6 +73,26 @@ Senha: o valor de POSTGRES_PASSWORD no backend/.env
 ```
 
 Se quiser trocar o login do pgAdmin, altere `PGADMIN_DEFAULT_EMAIL` e `PGADMIN_DEFAULT_PASSWORD` em `backend/.env` antes de subir o Compose.
+
+## Carga do cardapio por Docker
+
+O script `scripts/seed_menu_products.py` tambem pode rodar em um container separado, sem Python instalado localmente.
+Com backend e banco ja ativos, execute no PowerShell:
+
+```powershell
+.\scripts\run_seed_menu_products_docker.ps1
+```
+
+O wrapper constroi a imagem `minimercado-seed-menu-products:latest`, le `APP_ADMIN_KEY` de `backend/.env` quando a variavel nao foi informada no ambiente, e usa `http://host.docker.internal:8080` para chegar na API publicada pelo Compose.
+
+Opcoes uteis:
+
+```powershell
+.\scripts\run_seed_menu_products_docker.ps1 -DryRun
+.\scripts\run_seed_menu_products_docker.ps1 -CreateOnly
+.\scripts\run_seed_menu_products_docker.ps1 -BaseUrl http://host.docker.internal:8080
+.\scripts\run_seed_menu_products_docker.ps1 -NoBuild
+```
 
 ## Operacao
 
